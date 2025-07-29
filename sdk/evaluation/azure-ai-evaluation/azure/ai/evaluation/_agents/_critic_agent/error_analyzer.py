@@ -86,15 +86,17 @@ class ErrorAnalyzer:
             eval_issues = {}
             
             for eval_name, eval_result in results.items():
+                if eval_name.lower() in eval_result:
+                    eval_field_name = eval_name.lower()
+                else:
+                    eval_field_name = self._camel_to_snake(eval_name)
                 if fails_only:
                     # Only include if result is 'fail'
-                    if eval_result.get(f'{eval_name.lower()}_result') == 'fail':
+                    if eval_result.get(f'{eval_field_name}_result') == 'fail':
                         eval_issues[eval_name] = eval_result
                 else:
                     # Include if score is not perfect (assuming perfect is 5.0)
-                    score_key = f'{eval_name.lower()}'
-                    # Try different possible score key formats
-                    score = eval_result.get(score_key) or eval_result.get(eval_name.lower())
+                    score =  eval_result.get(eval_field_name)
                     
                     if score is not None and score < 5.0:
                         eval_issues[eval_name] = eval_result
@@ -127,17 +129,20 @@ class ErrorAnalyzer:
         
         for eval_data in imperfect_evaluations:
             for eval_name, eval_result in eval_data['results'].items():
+                if eval_name.lower() in eval_result:
+                    eval_field_name = eval_name.lower()
+                else:
+                    eval_field_name = self._camel_to_snake(eval_name)
                 patterns['evaluation_types'][eval_name] += 1
                 patterns['total_issues'] += 1
                 
                 # Extract score
-                score_key = f'{eval_name.lower()}_score'
-                score = eval_result.get(score_key) or eval_result.get(eval_name.lower())
+                score =  eval_result.get(eval_field_name)
                 if score is not None:
                     patterns['score_distribution'][eval_name][score] += 1
                 
                 # Extract reason
-                reason_key = f'{eval_name.lower()}_reason'
+                reason_key = f'{eval_field_name}_reason'
                 reason = eval_result.get(reason_key)
                 if reason:
                     patterns['reasons'][eval_name].append(reason)
@@ -778,7 +783,11 @@ class ErrorAnalyzer:
         for eval_data in raw_data:
             results = eval_data.get('results', {})
             for eval_name, eval_result in results.items():
-                reason_key = f'{eval_name.lower()}_reason'
+                if eval_name.lower() in eval_result:
+                    eval_field_name = eval_name.lower()
+                else:
+                    eval_field_name = self._camel_to_snake(eval_name)
+                reason_key = f'{eval_field_name}_reason'
                 reason = eval_result.get(reason_key, '')
                 if reason in related_reasons:
                     thread_id = eval_data.get('thread_id')
@@ -805,7 +814,8 @@ class ErrorAnalyzer:
             if original_evaluations:
                 eval_sample = next((sample for sample in original_evaluations 
                                    if sample.get('thread_id') == thread_id), None)
-            
+            print("EVAL SAMEPL")
+            print(eval_sample.keys())
             if eval_sample:
                 # Get evaluation details from cluster data
                 cluster_eval_info = {}
@@ -813,12 +823,16 @@ class ErrorAnalyzer:
                     if eval_data.get('thread_id') == thread_id:
                         results = eval_data.get('results', {})
                         for eval_name, eval_result in results.items():
-                            reason_key = f'{eval_name.lower()}_reason'
+                            if eval_name.lower() in eval_result:
+                                eval_field_name = eval_name.lower()
+                            else:
+                                eval_field_name = self._camel_to_snake(eval_name)
+                            reason_key = f'{eval_field_name}_reason'
                             reason = eval_result.get(reason_key, '')
                             if reason in related_reasons:
-                                score_key = f'{eval_name.lower()}_score'
-                                score = eval_result.get(score_key, eval_result.get(eval_name.lower(), 'N/A'))
-                                result_key = f'{eval_name.lower()}_result'
+                                score_key = f'{eval_field_name}_score'
+                                score = eval_result.get(score_key, eval_result.get(eval_field_name, 'N/A'))
+                                result_key = f'{eval_field_name}_result'
                                 result = eval_result.get(result_key, 'N/A')
                                 cluster_eval_info[eval_name] = {
                                     'score': score,
@@ -935,28 +949,33 @@ class ErrorAnalyzer:
         print(f"🆔 Thread ID: {thread_id}")
         
 
-        
+        # if we load evaluation from foundry evaluation jsonl, the format is flat.
+        # critic_agent.evaluate() returns a nested structure
+        if "conversation" in eval_sample:
+            conversation = eval_sample["conversation"]
+        else:
+            conversation = eval_sample
+
         query = None
         if isinstance(eval_sample, dict):
             # Common patterns for queries in evaluation data
-            query = (eval_sample.get('inputs.query') or 
-                    eval_sample.get('query') or 
-                    eval_sample.get('user_query') or 
-                    eval_sample.get('input') or
-                    eval_sample.get('prompt') or
-                    str(eval_sample) if eval_sample else None)
+            query = (conversation.get('inputs.query') or 
+                    conversation.get('query') or 
+                    conversation.get('user_query') or 
+                    conversation.get('input') or
+                    conversation.get('prompt') or
+                    str(conversation) if conversation else None)
         
         # Try to extract response from outputs
         response = None
-        if isinstance(eval_sample, dict):
+        if isinstance(conversation, dict):
             # Common patterns for responses in evaluation data
-            response = (eval_sample.get('inputs.response') or 
-                       eval_sample.get('response') or 
-                       eval_sample.get('output') or 
-                       eval_sample.get('result') or
-                       eval_sample.get('completion') or
-                       str(eval_sample) if eval_sample else None)
-        
+            response = (conversation.get('inputs.response') or 
+                       conversation.get('response') or 
+                       conversation.get('output') or 
+                       conversation.get('result') or
+                       conversation.get('completion') or
+                       str(conversation) if conversation else None)
 
         # Display query
         if query:
@@ -969,7 +988,7 @@ class ErrorAnalyzer:
         
         # Display response
         if response:
-            print("🤖 SYSTEM RESPONSE:")
+            print("🤖 RESPONSE:")
             # Format long responses nicely
             response = self._extract_texts_from_message(response)
             if isinstance(response, str) and len(response) > 200:
@@ -1012,7 +1031,10 @@ class ErrorAnalyzer:
                 role = entry["role"]
                 texts.append(f"{role}:")
             if 'content' in entry:
-                for content in entry['content']:
-                    if content['type'] == 'text':
-                        texts.append(content['text'])
+                if isinstance(entry['content'], str):
+                    texts.append(entry['content'])
+                else:
+                    for content in entry['content']:
+                        if content['type'] == 'text':
+                            texts.append(content['text'])
         return "\n".join(texts)

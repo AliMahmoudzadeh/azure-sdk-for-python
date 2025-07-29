@@ -262,6 +262,7 @@ class CriticAgent(PromptyEvaluatorBase[Dict[str, Union[str, List[str]]]]):
         )
         result["thread_id"] = thread_id
         result["results"] = conversation_results
+        result["conversation"] = conversation
         return result
 
     def _fetch_agent_threads(self, project_client: Any, agent_id: str, max_threads: int = -1) -> List[str]:
