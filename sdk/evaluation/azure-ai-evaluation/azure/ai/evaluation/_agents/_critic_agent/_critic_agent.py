@@ -14,6 +14,7 @@ from azure.ai.evaluation._common._experimental import experimental
 from azure.ai.evaluation._evaluators._intent_resolution import IntentResolutionEvaluator
 from azure.ai.evaluation._evaluators._tool_call_accuracy import ToolCallAccuracyEvaluator
 from azure.ai.evaluation._evaluators._task_adherence import TaskAdherenceEvaluator
+from .error_analyzer import ErrorAnalyzer
 
 logger = logging.getLogger(__name__)
 
@@ -204,6 +205,7 @@ class CriticAgent(PromptyEvaluatorBase[Dict[str, Union[str, List[str]]]]):
         """
         # This would integrate with the existing async _do_eval method
         # For conversation-based evaluation using the prompty
+        print("THREAD ID", thread_id)
         if not thread_id:
             raise EvaluationException(
                 message="Thread ID must be provided for conversation evaluation.",
@@ -218,7 +220,10 @@ class CriticAgent(PromptyEvaluatorBase[Dict[str, Union[str, List[str]]]]):
         )
 
         converter = AIAgentConverter(project_client)
-        conversation = converter.prepare_evaluation_data(thread_ids=thread_id)[-1]
+        try:
+            conversation = converter.prepare_evaluation_data(thread_ids=thread_id)[-1]
+        except:
+            conversation = {}
         # {'query': [
         #     {'createdAt': '2025-07-17T08:56:22Z', 'role': 'user', 'content': [{'type': 'text', 'text': "hey there'"}]},
         #     {'createdAt': '2025-07-17T08:56:23Z', 'run_id': 'run_MVHZIe0TNWWKPx0ppvUz3uAh',
@@ -434,3 +439,71 @@ class CriticAgent(PromptyEvaluatorBase[Dict[str, Union[str, List[str]]]]):
     #     if logger:
     #         logger.warning("LLM output is not a dictionary, returning empty result.")
     #     return {"evaluators": [], "justification": "", "distinct_assessments": {}}
+
+    def analyze_errors(
+        self,
+        evaluation_results: List[Dict[str, Any]],
+        fails_only: bool = True,
+        num_clusters: int = 10,
+        use_llm_analysis: bool = True,
+        **kwargs
+    ) -> Dict[str, Any]:
+        """
+        Analyze errors in the evaluation results using the ErrorAnalyzer.
+
+        :param evaluation_results: List of evaluation results to analyze
+        :type evaluation_results: List[Dict[str, Any]]
+        :param fails_only: Whether to include only failed evaluations
+        :type fails_only: bool
+        :param num_clusters: Number of clusters for error analysis
+        :type num_clusters: int
+        :param use_llm_analysis: Whether to use LLM for error analysis
+        :type use_llm_analysis: bool
+        :return: Error analysis report
+        :rtype: Dict[str, Any]
+        """
+        analyzer = ErrorAnalyzer()
+        report = analyzer.generate_enhanced_report(
+            evaluations=evaluation_results,
+            fails_only=fails_only,
+            num_clusters=num_clusters,
+            use_llm_analysis=use_llm_analysis,
+            **kwargs
+        )
+        return report
+
+    def visualize_errors(self, error_analysis_report: Dict[str, Any], figsize: tuple = (12, 10)):
+        """
+        Visualize the error analysis report.
+
+        :param error_analysis_report: The error analysis report to visualize
+        :type error_analysis_report: Dict[str, Any]
+        :param figsize: Size of the figure for visualization
+        :type figsize: tuple
+        """
+        analyzer = ErrorAnalyzer()
+        analyzer.visualize_cluster_results(
+            cluster_results=error_analysis_report.get("error_clusters", {}),
+            figsize=figsize
+        )
+        
+    def interactive_error_analysis(
+        self,
+        error_analysis_report: Dict[str, Any],
+        original_evaluations: List[Dict[str, Any]],
+        **kwargs
+    ):
+        """
+        Create an interactive error analysis drill-down.
+
+        :param error_analysis_report: The error analysis report to use for drill-down
+        :type error_analysis_report: Dict[str, Any]
+        :param original_evaluations: Original evaluations to include in the drill-down
+        :type original_evaluations: List[Dict[str, Any]]
+        """
+        analyzer = ErrorAnalyzer()
+        analyzer.create_interactive_drill_down(
+            report=error_analysis_report,
+            original_evaluations=original_evaluations,
+            **kwargs
+        )

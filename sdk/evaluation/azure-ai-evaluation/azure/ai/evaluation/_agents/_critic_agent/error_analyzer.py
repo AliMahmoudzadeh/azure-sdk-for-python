@@ -48,6 +48,22 @@ class ErrorAnalyzer:
             # If client is provided, use default deployment name
             self.deployment_name = os.getenv("AZURE_OPENAI_DEPLOYMENT")
     
+    def _camel_to_snake(self, name: str) -> str:
+        """
+        Convert camelCase to snake_case.
+        
+        Args:
+            name: String in camelCase format
+            
+        Returns:
+            String in snake_case format
+        """
+        import re
+        # Insert underscore before uppercase letters that follow lowercase letters
+        s1 = re.sub('(.)([A-Z][a-z]+)', r'\1_\2', name)
+        # Insert underscore before uppercase letters that follow lowercase letters or digits
+        return re.sub('([a-z0-9])([A-Z])', r'\1_\2', s1).lower()
+        
     def filter_imperfect_evaluations(self, evaluations: List[Dict[str, Any]], 
                                    fails_only: bool = False) -> List[Dict[str, Any]]:
         """
@@ -76,7 +92,7 @@ class ErrorAnalyzer:
                         eval_issues[eval_name] = eval_result
                 else:
                     # Include if score is not perfect (assuming perfect is 5.0)
-                    score_key = f'{eval_name.lower()}_score'
+                    score_key = f'{eval_name.lower()}'
                     # Try different possible score key formats
                     score = eval_result.get(score_key) or eval_result.get(eval_name.lower())
                     
@@ -128,38 +144,39 @@ class ErrorAnalyzer:
         
         return patterns
     
-    def generate_error_names(self, reasons: List[str], batch_size: int = 10) -> List[str]:
+    def generate_error_tags(self, reasons: List[str], batch_size: int = 10) -> List[str]:
         """
-        Generate short error names for a list of reasons using LLM.
+        Generate short error tags for a list of reasons using LLM.
         
         Args:
             reasons: List of detailed error reasons
             batch_size: Number of reasons to process in each API call
             
         Returns:
-            List of short error names corresponding to each reason
+            List of short error tags corresponding to each reason
         """
         if not self.openai_client:
             print("Warning: OpenAI client not available, returning generic error names")
             return [f"Error_{i+1}" for i in range(len(reasons))]
         
-        error_names = []
+        error_tags = []
         
         # Process reasons in batches to avoid token limits
         for i in range(0, len(reasons), batch_size):
             batch_reasons = reasons[i:i+batch_size]
             
             prompt = f"""
-            For each of the following error reasons, generate a short, descriptive error name (2-4 words max).
-            The error name should capture the essence of the issue in a concise way.
-            
+            For each of the following error reasons, generate a short, descriptive error tags (4-5 words max).
+            The error tag should capture the essence of the issue in a concise way. Make sure to include the 
+            source of the issue as well as the type of error. 
+
             Format your response as a JSON list with exactly {len(batch_reasons)} items, one for each reason:
             
             Reasons:
             {json.dumps(batch_reasons, indent=2)}
             
             Example format:
-            ["unrelated_information_returned", "tool_is_not_used", "wrong_tool_is_called", ...]
+            ["unrelated_hallucinated_information_returned", "tool_is_not_used", "wrong_tool_is_called", ...]
 
             Response (JSON list only):
             """
@@ -179,26 +196,26 @@ class ErrorAnalyzer:
                 try:
                     batch_names = json.loads(content)
                     if isinstance(batch_names, list) and len(batch_names) == len(batch_reasons):
-                        error_names.extend(batch_names)
+                        error_tags.extend(batch_names)
                     else:
                         print(f"Warning: Unexpected response format for batch {i//batch_size + 1}")
-                        error_names.extend([f"Error_{i+j+1}" for j in range(len(batch_reasons))])
+                        error_tags.extend([f"Error_{i+j+1}" for j in range(len(batch_reasons))])
                 except json.JSONDecodeError:
                     print(f"Warning: Could not parse JSON response for batch {i//batch_size + 1}")
-                    error_names.extend([f"Error_{i+j+1}" for j in range(len(batch_reasons))])
+                    error_tags.extend([f"Error_{i+j+1}" for j in range(len(batch_reasons))])
                     
             except Exception as e:
                 print(f"Error generating error names for batch {i//batch_size + 1}: {e}")
-                error_names.extend([f"Error_{i+j+1}" for j in range(len(batch_reasons))])
+                error_tags.extend([f"Error_{i+j+1}" for j in range(len(batch_reasons))])
         
-        return error_names
+        return error_tags
     
-    def cluster_error_names(self, error_names: List[str], num_clusters: int = 10) ->  Dict[str, Any]:
+    def cluster_error_tags(self, error_tags: List[str], num_clusters: int = 10) ->  Dict[str, Any]:
         """
         Cluster error names into groups with weights using LLM.
         
         Args:
-            error_names: List of short error names
+            error_tags: List of short error names
             num_clusters: Maximum number of clusters to create
             
         Returns:
@@ -206,7 +223,7 @@ class ErrorAnalyzer:
         """
         if not self.openai_client:
             print("Warning: OpenAI client not available, returning simple frequency clusters")
-            name_counts = Counter(error_names)
+            name_counts = Counter(error_tags)
             clusters = {}
             for i, (name, count) in enumerate(name_counts.most_common(num_clusters)):
                 clusters[f"Cluster_{i+1}_{name}"] = {
@@ -214,14 +231,14 @@ class ErrorAnalyzer:
                     'errors': [name] * count,
                     'description': f"Issues related to {name}"
                 }
-            return {'clusters': clusters, 'total_errors': len(error_names)}
+            return {'clusters': clusters, 'total_errors': len(error_tags)}
         
         # Count frequencies
-        name_counts = Counter(error_names)
+        name_counts = Counter(error_tags)
         unique_names = list(name_counts.keys())
         
         prompt = f"""
-        You have {len(error_names)} error instances with {len(unique_names)} unique error types.
+        You have {len(error_tags)} error instances with {len(unique_names)} unique error types.
         Group these error names into {min(num_clusters, len(unique_names))} meaningful clusters.
         
         Error names with their frequencies:
@@ -237,11 +254,11 @@ class ErrorAnalyzer:
         {{
             "clusters": {{
                 "Cluster_Name_1": {{
-                    "error_names": ["Error1", "Error2"],
+                    "error_tags": ["Error1", "Error2"],
                     "description": "Brief description of this cluster"
                 }},
                 "Cluster_Name_2": {{
-                    "error_names": ["Error3", "Error4"],
+                    "error_tags": ["Error3", "Error4"],
                     "description": "Brief description of this cluster"
                 }}
             }}
@@ -268,7 +285,7 @@ class ErrorAnalyzer:
             total_assigned = 0
             
             for cluster_name, cluster_info in cluster_data.get('clusters', {}).items():
-                cluster_errors = cluster_info.get('error_names', [])
+                cluster_errors = cluster_info.get('error_tags', [])
                 cluster_weight = sum(name_counts.get(name, 0) for name in cluster_errors)
                 total_assigned += cluster_weight
                 
@@ -282,9 +299,9 @@ class ErrorAnalyzer:
             
             return {
                 'clusters': final_clusters,
-                'total_errors': len(error_names),
+                'total_errors': len(error_tags),
                 'total_assigned': total_assigned,
-                'coverage': total_assigned / len(error_names) if error_names else 0
+                'coverage': total_assigned / len(error_tags) if error_tags else 0
             }
             
         except Exception as e:
@@ -300,7 +317,7 @@ class ErrorAnalyzer:
                 }
             return {
                 'clusters': clusters,
-                'total_errors': len(error_names),
+                'total_errors': len(error_tags),
                 'total_assigned': sum(c['weight'] for c in clusters.values()),
                 'coverage': 1.0
             }
@@ -377,7 +394,7 @@ class ErrorAnalyzer:
         print("Step 2: Extracting error patterns...")
         patterns = self.extract_error_patterns(imperfect_evals)
         
-        print("Step 3: Generating short error names...")
+        print("Step 3: Generating short error tags...")
         all_reasons = []
         reason_to_eval_type = {}
         
@@ -385,11 +402,11 @@ class ErrorAnalyzer:
             for reason in reasons:
                 all_reasons.append(reason)
                 reason_to_eval_type[reason] = eval_type
-        
-        error_names = self.generate_error_names(all_reasons)
 
-        print("Step 4: Clustering error names...")
-        cluster_results = self.cluster_error_names(error_names, num_clusters)
+        error_tags = self.generate_error_tags(all_reasons)
+
+        print("Step 4: Clustering error tags...")
+        cluster_results = self.cluster_error_tags(error_tags, num_clusters)
         print("Step 5: Generating LLM analysis...")
         llm_analysis = None
         if use_llm_analysis:
@@ -405,14 +422,14 @@ class ErrorAnalyzer:
                 'imperfect_evaluations': len(imperfect_evals),
                 'total_issues': patterns['total_issues'],
                 'filter_mode': 'fails_only' if fails_only else 'non_perfect',
-                'unique_error_types': len(set(error_names)),
+                'unique_error_types': len(set(error_tags)),
                 'total_reasons_analyzed': len(all_reasons)
             },
             'patterns': patterns,
-            'error_names': error_names,
+            'error_tags': error_tags,
             'error_clusters': cluster_results,
             'reason_mapping': {
-                'reasons_to_names': dict(zip(all_reasons, error_names)),
+                'reasons_to_names': dict(zip(all_reasons, error_tags)),
                 'reasons_to_eval_types': reason_to_eval_type
             },
             'llm_analysis': llm_analysis,
@@ -423,20 +440,19 @@ class ErrorAnalyzer:
 
     
     def visualize_cluster_results(self, cluster_results: Dict[str, Any], 
-                                figsize: tuple = (15, 12),
+                                figsize: tuple = (12, 10),
                                 save_path: Optional[str] = None) -> None:
         """
-        Create comprehensive visualizations for cluster results.
+        Create simplified visualizations for cluster results showing the two main charts.
         
         Args:
-            cluster_results: Dictionary containing cluster information from cluster_error_names
+            cluster_results: Dictionary containing cluster information from cluster_error_tags
             figsize: Figure size for the plots
             save_path: Optional path to save the visualization
         """
         try:
             import matplotlib.pyplot as plt
             import seaborn as sns
-            import numpy as np
         except ImportError as e:
             print(f"Visualization libraries not available: {e}")
             print("Please install: pip install matplotlib seaborn")
@@ -455,21 +471,21 @@ class ErrorAnalyzer:
         plt.style.use('default')
         sns.set_palette("husl")
         
-        # Create subplots
-        fig, axes = plt.subplots(2, 2, figsize=figsize)
-        fig.suptitle('Error Cluster Analysis Dashboard', fontsize=16, fontweight='bold')
+        # Create vertical subplots (2 rows, 1 column)
+        fig, axes = plt.subplots(2, 1, figsize=figsize)
+        fig.suptitle('Error Cluster Analysis', fontsize=16, fontweight='bold', y=0.98)
         
         # 1. Cluster Weight Distribution (Bar Chart)
-        ax1 = axes[0, 0]
+        ax1 = axes[0]
         cluster_names = list(clusters.keys())
         weights = [clusters[name]['weight'] for name in cluster_names]
         
         # Truncate long cluster names for display
-        display_names = [name[:30] + '...' if len(name) > 30 else name for name in cluster_names]
-        
+        display_names = [name[:60] + '...' if len(name) > 60 else name for name in cluster_names]
+
         bars = ax1.barh(range(len(display_names)), weights, color=sns.color_palette("husl", len(cluster_names)))
         ax1.set_yticks(range(len(display_names)))
-        ax1.set_yticklabels(display_names, fontsize=8)
+        ax1.set_yticklabels(display_names, fontsize=9)
         ax1.set_xlabel('Weight (Number of Errors)')
         ax1.set_title('Cluster Weights Distribution')
         ax1.grid(axis='x', alpha=0.3)
@@ -477,10 +493,10 @@ class ErrorAnalyzer:
         # Add value labels on bars
         for i, (bar, weight) in enumerate(zip(bars, weights)):
             ax1.text(weight + max(weights) * 0.01, i, f'{weight}', 
-                    va='center', ha='left', fontsize=8)
+                    va='center', ha='left', fontsize=9)
         
         # 2. Cluster Coverage Pie Chart
-        ax2 = axes[0, 1]
+        ax2 = axes[1]
         
         # Prepare data for pie chart
         pie_data = []
@@ -490,9 +506,9 @@ class ErrorAnalyzer:
         for i, (name, cluster_info) in enumerate(clusters.items()):
             pie_data.append(cluster_info['weight'])
             # Truncate labels for pie chart
-            label = name.split('_')[0] if '_' in name else name
-            pie_labels.append(f"{label[:15]}...")
-        
+            label = name[:60] + '...' if len(name) > 40 else name
+            pie_labels.append(f"{label}...")
+
         # Add "uncovered" if coverage < 100%
         total_coverage = cluster_results.get('coverage', 1.0)
         if total_coverage < 1.0:
@@ -502,106 +518,16 @@ class ErrorAnalyzer:
         
         wedges, texts, autotexts = ax2.pie(pie_data, labels=pie_labels, autopct='%1.1f%%', 
                                           colors=colors, startangle=90)
-        ax2.set_title(f'Error Distribution\n(Coverage: {total_coverage:.1%})')
+        ax2.set_title(f'Error Distribution (Coverage: {total_coverage:.1%})')
         
         # Make percentage text more readable
         for autotext in autotexts:
             autotext.set_color('white')
             autotext.set_fontweight('bold')
-            autotext.set_fontsize(8)
+            autotext.set_fontsize(9)
         
-        # 3. Error Types per Cluster (Stacked Bar)
-        ax3 = axes[1, 0]
-        
-        # Prepare data for stacked bar chart
-        cluster_error_counts = {}
-        all_error_types = set()
-        
-        for cluster_name, cluster_info in clusters.items():
-            error_counts = cluster_info.get('error_counts', {})
-            cluster_error_counts[cluster_name] = error_counts
-            all_error_types.update(error_counts.keys())
-        
-        if all_error_types:
-            # Create matrix for stacked bar
-            error_types = list(all_error_types)
-            cluster_names_short = [name.split('_')[0][:10] for name in cluster_names]
-            
-            # Create data matrix
-            data_matrix = []
-            for cluster_name in cluster_names:
-                row = []
-                for error_type in error_types:
-                    count = cluster_error_counts[cluster_name].get(error_type, 0)
-                    row.append(count)
-                data_matrix.append(row)
-            
-            # Create stacked bar chart
-            data_matrix = np.array(data_matrix).T  # Transpose for proper stacking
-            bottom = np.zeros(len(cluster_names_short))
-            
-            colors_stack = sns.color_palette("Set3", len(error_types))
-            
-            for i, (error_type, color) in enumerate(zip(error_types, colors_stack)):
-                ax3.bar(cluster_names_short, data_matrix[i], bottom=bottom, 
-                       label=error_type[:15], color=color, alpha=0.8)
-                bottom += data_matrix[i]
-            
-            ax3.set_xlabel('Clusters')
-            ax3.set_ylabel('Number of Errors')
-            ax3.set_title('Error Types Distribution by Cluster')
-            ax3.tick_params(axis='x', rotation=45)
-            
-            # Add legend, but limit to avoid overcrowding
-            if len(error_types) <= 8:
-                ax3.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=8)
-            else:
-                ax3.text(0.02, 0.98, f'Showing {len(error_types)} error types', 
-                        transform=ax3.transAxes, fontsize=8, verticalalignment='top')
-        else:
-            ax3.text(0.5, 0.5, 'No error type data available', 
-                    transform=ax3.transAxes, ha='center', va='center')
-            ax3.set_title('Error Types Distribution by Cluster')
-        
-        # 4. Cluster Statistics Summary
-        ax4 = axes[1, 1]
-        ax4.axis('off')  # Turn off axis for text display
-        
-        # Create summary statistics
-        stats_text = []
-        stats_text.append("CLUSTER ANALYSIS SUMMARY")
-        stats_text.append("=" * 25)
-        stats_text.append(f"Total Clusters: {len(clusters)}")
-        stats_text.append(f"Total Errors: {cluster_results.get('total_errors', 0)}")
-        stats_text.append(f"Coverage: {cluster_results.get('coverage', 0):.1%}")
-        stats_text.append(f"Assigned Errors: {cluster_results.get('total_assigned', 0)}")
-        stats_text.append("")
-        stats_text.append("TOP 5 CLUSTERS:")
-        stats_text.append("-" * 15)
-        
-        # Sort clusters by weight and show top 5
-        sorted_clusters = sorted(clusters.items(), key=lambda x: x[1]['weight'], reverse=True)
-        for i, (name, info) in enumerate(sorted_clusters[:5], 1):
-            weight = info['weight']
-            percentage = (weight / cluster_results.get('total_errors', 1)) * 100
-            cluster_name_short = name.split('_')[0][:20]
-            stats_text.append(f"{i}. {cluster_name_short}")
-            stats_text.append(f"   Weight: {weight} ({percentage:.1f}%)")
-            
-            # Add description if available
-            description = info.get('description', '')
-            if description and len(description) < 50:
-                stats_text.append(f"   {description}")
-            stats_text.append("")
-        
-        # Display the text
-        full_text = '\n'.join(stats_text)
-        ax4.text(0.05, 0.95, full_text, transform=ax4.transAxes, 
-                fontsize=9, verticalalignment='top', fontfamily='monospace',
-                bbox=dict(boxstyle="round,pad=0.5", facecolor="lightgray", alpha=0.8))
-        
-        # Adjust layout
-        plt.tight_layout()
+        # Adjust layout with padding to prevent title overlap
+        plt.tight_layout(rect=[0, 0, 1, 0.96])
         
         # Save if path provided
         if save_path:
@@ -609,60 +535,484 @@ class ErrorAnalyzer:
             print(f"Visualization saved to: {save_path}")
         
         plt.show()
-        
-        # Create additional word cloud visualization if possible
-        self._create_cluster_wordcloud(clusters, figsize=(12, 8))
+
     
-    def _create_cluster_wordcloud(self, clusters: Dict[str, Any], figsize: tuple = (12, 8)) -> None:
+    def create_interactive_drill_down(self, report: Dict[str, Any], 
+                                     original_evaluations: Optional[List[Dict[str, Any]]] = None) -> None:
         """
-        Create a word cloud visualization of error clusters.
+        Create an interactive drill-down visualization using clickable plotly charts.
+        Users can click on pie chart slices to see error tags, then click on bars to see full samples.
         
         Args:
-            clusters: Dictionary containing cluster information
-            figsize: Figure size for the word cloud
+            report: Complete enhanced report from generate_enhanced_report
+            original_evaluations: Optional list of original evaluation data with full samples
         """
         try:
-            from wordcloud import WordCloud
-            import matplotlib.pyplot as plt
+            import plotly.graph_objects as go
+            import plotly.express as px
+            import ipywidgets as widgets
+            from IPython.display import display, HTML, clear_output
         except ImportError:
-            print("WordCloud not available. Install with: pip install wordcloud")
+            print("Interactive visualization requires plotly and ipywidgets.")
+            print("Install with: pip install plotly ipywidgets")
             return
         
-        # Prepare text data for word cloud
-        cluster_text = []
-        for cluster_name, cluster_info in clusters.items():
-            weight = cluster_info['weight']
-            errors = cluster_info.get('errors', [])
-            
-            # Add cluster name repeated by weight for frequency
-            cluster_name_clean = cluster_name.replace('_', ' ')
-            cluster_text.extend([cluster_name_clean] * min(weight, 10))  # Cap to avoid domination
-            
-            # Add error names
-            for error in errors[:3]:  # Limit to top 3 errors per cluster
-                if isinstance(error, str):
-                    cluster_text.append(error.replace('_', ' '))
+        cluster_results = report.get('error_clusters', {})
+        clusters = cluster_results.get('clusters', {})
+        reason_mapping = report.get('reason_mapping', {})
+        raw_data = report.get('raw_imperfect_data', [])
         
-        if not cluster_text:
-            print("No text data available for word cloud")
+        if not clusters:
+            print("No cluster data available for interactive visualization")
             return
         
-        # Create word cloud
-        text = ' '.join(cluster_text)
-        wordcloud = WordCloud(
-            width=800, 
-            height=400, 
-            background_color='white',
-            colormap='viridis',
-            max_words=50,
-            relative_scaling=0.5,
-            random_state=42
-        ).generate(text)
+        print("🎯 Interactive Error Analysis Dashboard")
+        print("=" * 50)
+        print("💡 Instructions:")
+        print("   • Click on pie chart slices to explore clusters")
+        print("   • Click on bar chart bars to see individual samples") 
+        print("   • Use back buttons to navigate between levels")
+        print()
         
-        # Display word cloud
-        plt.figure(figsize=figsize)
-        plt.imshow(wordcloud, interpolation='bilinear')
-        plt.axis('off')
-        plt.title('Error Clusters Word Cloud', fontsize=16, fontweight='bold', pad=20)
-        plt.tight_layout()
-        plt.show()
+        # Store data for use in click callbacks
+        self._drill_data = {
+            'clusters': clusters,
+            'reason_mapping': reason_mapping,
+            'raw_data': raw_data,
+            'original_evaluations': original_evaluations
+        }
+        
+        # Create and show the clickable pie chart overview
+        self._show_cluster_overview()
+    
+    def _show_cluster_overview(self) -> None:
+        """Show the initial clickable pie chart overview of all clusters."""
+        try:
+            import plotly.graph_objects as go
+            import plotly.express as px
+            from plotly.graph_objs import FigureWidget
+            import ipywidgets as widgets
+            from IPython.display import display
+        except ImportError:
+            print("Plotly and ipywidgets not available for interactive visualization")
+            return
+        
+        clusters = self._drill_data['clusters']
+        cluster_names = list(clusters.keys())
+        cluster_weights = [clusters[name]['weight'] for name in cluster_names]
+        cluster_colors = px.colors.qualitative.Set3[:len(cluster_names)]
+        
+        # Create clickable pie chart using FigureWidget
+        fig = FigureWidget()
+        
+        fig.add_trace(go.Pie(
+            labels=[f"{name[:40]}{'...' if len(name) > 40 else ''}" for name in cluster_names],
+            values=cluster_weights,
+            name="Error Clusters",
+            hole=0.3,
+            textinfo='label+percent',
+            textposition='outside',
+            marker=dict(colors=cluster_colors),
+            hovertemplate='<b>%{label}</b><br>' +
+                         'Weight: %{value}<br>' +
+                         'Percentage: %{percent}<br>' +
+                         '<i>Click to explore this cluster</i><extra></extra>'
+        ))
+        
+        fig.update_layout(
+            title={
+                'text': "🎯 Error Cluster Distribution<br><sub>Click on any slice to explore that cluster</sub>",
+                'x': 0.4,  # Shift title slightly left to account for legend on right
+                'font': {'size': 16}
+            },
+            showlegend=True,
+            legend=dict(
+                orientation="v",  # Vertical orientation
+                yanchor="middle", 
+                y=0.5,
+                xanchor="left",
+                x=1.05  # Position legend to the right of the chart
+            ),
+            annotations=[dict(
+                text=f"Total<br>Errors<br>{sum(cluster_weights)}",
+                x=0.5, y=0.5,
+                font_size=12,
+                showarrow=False
+            )],
+            height=600,
+            width=900  # Make figure wider to accommodate legend on the right
+        )
+        
+        # Create output area for drill-down content
+        self._output_area = widgets.Output()
+        
+        # Add click event handler
+        def handle_pie_click(trace, points, selector):
+            with self._output_area:
+                self._output_area.clear_output()
+                if points.point_inds:
+                    point_index = points.point_inds[0]
+                    clicked_cluster = cluster_names[point_index]
+                    self._show_cluster_details_inline(clicked_cluster)
+        
+        fig.data[0].on_click(handle_pie_click)
+        
+        # Display the interactive pie chart and output area
+        display(widgets.VBox([
+            widgets.HTML("<h3>🎯 Interactive Error Cluster Analysis</h3>"),
+            widgets.HTML("<p><i>Click on any pie slice to explore that cluster's error tags</i></p>"),
+            fig,
+            self._output_area
+        ]))
+    
+    def _show_cluster_details_inline(self, cluster_name: str) -> None:
+        """Show detailed view of a specific cluster with clickable error tags."""
+        try:
+            import plotly.graph_objects as go
+            from plotly.graph_objs import FigureWidget
+            import ipywidgets as widgets
+            from IPython.display import display
+        except ImportError:
+            print("Detailed view requires plotly and ipywidgets")
+            return
+        
+        clusters = self._drill_data['clusters']
+        cluster_info = clusters[cluster_name]
+        error_counts = cluster_info.get('error_counts', {})
+        
+        if not error_counts:
+            print(f"No error tags found for cluster: {cluster_name}")
+            return
+        
+        print(f"🎯 CLUSTER: {cluster_name}")
+        print("─" * 70)
+        print(f"Total Weight: {cluster_info['weight']} errors")
+        print(f"Description: {cluster_info.get('description', 'No description available')}")
+        print()
+        
+        # Create clickable horizontal bar chart for error tags
+        tags = list(error_counts.keys())
+        counts = list(error_counts.values())
+        
+        fig = FigureWidget()
+        fig.add_trace(go.Bar(
+            x=counts,
+            y=tags,
+            orientation='h',
+            marker_color='lightcoral',
+            text=counts,
+            textposition='outside',
+            hovertemplate='<b>%{y}</b><br>Count: %{x}<br><i>Click to see samples</i><extra></extra>'
+        ))
+        
+        fig.update_layout(
+            title=f"Error Tags in: {cluster_name[:60]}{'...' if len(cluster_name) > 60 else ''}<br><sub>Click on any bar to see sample conversations</sub>",
+            xaxis_title="Frequency",
+            yaxis_title="Error Tags",
+            height=max(400, len(tags) * 40 + 150),
+            margin=dict(l=200, r=50, t=100, b=50)
+        )
+        
+        # Create output area for samples
+        samples_output = widgets.Output()
+        
+        # Add click event handler for bars
+        def handle_bar_click(trace, points, selector):
+            with samples_output:
+                samples_output.clear_output()
+                if points.point_inds:
+                    point_index = points.point_inds[0]
+                    clicked_tag = tags[point_index]
+                    self._show_tag_samples_inline(cluster_name, clicked_tag)
+        
+        fig.data[0].on_click(handle_bar_click)
+        
+        # Create back button
+        back_button = widgets.Button(
+            description="⬅️ Back to Cluster Overview",
+            layout=widgets.Layout(width='250px'),
+            style={'description_width': 'initial'},
+            button_style='info'
+        )
+        
+        def go_back(b):
+            with self._output_area:
+                self._output_area.clear_output()
+                print("👆 Click on the pie chart above to explore clusters")
+        
+        back_button.on_click(go_back)
+        
+        # Display everything
+        display(widgets.VBox([
+            back_button,
+            widgets.HTML("<p><i>Click on any bar to see full conversation samples for that error tag</i></p>"),
+            fig,
+            samples_output
+        ]))
+
+    def _show_tag_samples_inline(self, cluster_name: str, tag: str) -> None:
+        """Show full conversation samples for a specific error tag."""
+        reason_mapping = self._drill_data['reason_mapping']
+        raw_data = self._drill_data['raw_data']
+        original_evaluations = self._drill_data['original_evaluations']
+        
+        print(f"🔍 SAMPLES FOR ERROR TAG: {tag}")
+        print("═" * 80)
+        print(f"📁 Cluster: {cluster_name}")
+        print(f"🏷️  Tag: {tag}")
+        print()
+        
+        # Find evaluations related to this tag
+        reasons_to_names = reason_mapping.get('reasons_to_names', {})
+        reasons_to_eval_types = reason_mapping.get('reasons_to_eval_types', {})
+        
+        # Find reasons that map to this tag
+        related_reasons = [reason for reason, mapped_tag in reasons_to_names.items() if mapped_tag == tag]
+        
+        if not related_reasons:
+            print("❌ No related reasons found for this tag")
+            return
+        
+        # Find thread IDs that have evaluations with these reasons
+        matching_thread_ids = []
+        for eval_data in raw_data:
+            results = eval_data.get('results', {})
+            for eval_name, eval_result in results.items():
+                reason_key = f'{eval_name.lower()}_reason'
+                reason = eval_result.get(reason_key, '')
+                if reason in related_reasons:
+                    thread_id = eval_data.get('thread_id')
+                    if thread_id and thread_id not in matching_thread_ids:
+                        matching_thread_ids.append(thread_id)
+        
+        if not matching_thread_ids:
+            print("❌ No matching samples found")
+            return
+        
+        print(f"📊 Found {len(matching_thread_ids)} samples with this error tag")
+        print(f"📋 Showing first {min(3, len(matching_thread_ids))} samples:\n")
+        
+        # Show up to 3 samples
+        samples_shown = 0
+        for thread_id in matching_thread_ids[:3]:
+            samples_shown += 1
+            
+            print(f"📝 SAMPLE {samples_shown} of {len(matching_thread_ids)}")
+            print("─" * 60)
+            
+            # Find the original evaluation sample
+            eval_sample = None
+            if original_evaluations:
+                eval_sample = next((sample for sample in original_evaluations 
+                                   if sample.get('thread_id') == thread_id), None)
+            
+            if eval_sample:
+                # Get evaluation details from cluster data
+                cluster_eval_info = {}
+                for eval_data in raw_data:
+                    if eval_data.get('thread_id') == thread_id:
+                        results = eval_data.get('results', {})
+                        for eval_name, eval_result in results.items():
+                            reason_key = f'{eval_name.lower()}_reason'
+                            reason = eval_result.get(reason_key, '')
+                            if reason in related_reasons:
+                                score_key = f'{eval_name.lower()}_score'
+                                score = eval_result.get(score_key, eval_result.get(eval_name.lower(), 'N/A'))
+                                result_key = f'{eval_name.lower()}_result'
+                                result = eval_result.get(result_key, 'N/A')
+                                cluster_eval_info[eval_name] = {
+                                    'score': score,
+                                    'result': result,
+                                    'reason': reason,
+                                    'tag': tag
+                                }
+                
+                # Show well-formatted query-response conversation
+                self._display_formatted_conversation(eval_sample)
+                
+                # Show cluster-based evaluation details (from cluster data, not outputs)
+                if cluster_eval_info:
+                    print("🎯 EVALUATION ANALYSIS")
+                    print("─" * 50)
+                    print(f"🏷️  Error Tag: {tag}")
+                    print(f"🎯 Related Cluster: {cluster_name}")
+                    print()
+                    
+                    for eval_name, eval_info in cluster_eval_info.items():
+                        print(f"📊 {eval_name} Evaluation:")
+                        
+                        # Format score nicely
+                        score = eval_info['score']
+                        if isinstance(score, (int, float)):
+                            score_display = f"{score:.2f}" if isinstance(score, float) else str(score)
+                            # Add visual indicator for score
+                            if isinstance(score, (int, float)) and score <= 2:
+                                score_display += " ❌ (Poor)"
+                            elif isinstance(score, (int, float)) and score <= 3:
+                                score_display += " ⚠️  (Fair)" 
+                            elif isinstance(score, (int, float)) and score >= 4:
+                                score_display += " ✅ (Good)"
+                        else:
+                            score_display = str(score)
+                        
+                        print(f"   • Score: {score_display}")
+                        print(f"   • Result: {eval_info['result']}")
+                        
+                        # Format reason nicely (wrap long reasons)
+                        reason = eval_info['reason']
+                        if len(reason) > 80:
+                            # Wrap long reasons
+                            reason_words = reason.split()
+                            reason_lines = []
+                            current_line = []
+                            current_length = 0
+                            
+                            for word in reason_words:
+                                if current_length + len(word) > 75:
+                                    if current_line:
+                                        reason_lines.append(" ".join(current_line))
+                                        current_line = [word]
+                                        current_length = len(word)
+                                else:
+                                    current_line.append(word)
+                                    current_length += len(word) + 1
+                            
+                            if current_line:
+                                reason_lines.append(" ".join(current_line))
+                            
+                            print(f"   • Reason:")
+                            for line in reason_lines:
+                                print(f"     {line}")
+                        else:
+                            print(f"   • Reason: {reason}")
+                        print()
+                else:
+                    print("⚠️  No evaluation details found in cluster data for this sample")
+                    print()
+                
+                print("═" * 70)
+                print()
+                
+        if samples_shown < len(matching_thread_ids):
+            remaining = len(matching_thread_ids) - samples_shown
+            print(f"... and {remaining} more samples with this error tag.")
+        
+        # Add back button
+        try:
+            import ipywidgets as widgets
+            from IPython.display import display
+            
+            back_button = widgets.Button(
+                description="⬅️ Back to Error Tags",
+                layout=widgets.Layout(width='200px'),
+                style={'description_width': 'initial'},
+                button_style='warning'
+            )
+            
+            def go_back_to_tags(b):
+                with self._output_area:
+                    self._output_area.clear_output()
+                    self._show_cluster_details_inline(cluster_name)
+            
+            back_button.on_click(go_back_to_tags)
+            display(back_button)
+            
+        except ImportError:
+            print("📌 Use the interactive interface above to navigate back")
+
+    def _display_formatted_conversation(self, eval_sample: Dict[str, Any]) -> None:
+        """
+        Display a well-formatted conversation showing query-response pairs.
+        
+        Args:
+            eval_sample: Sample data containing conversation information
+        """
+        print("💬 CONVERSATION DETAILS")
+        print("─" * 50)
+        
+        # Extract basic information
+        thread_id = eval_sample.get('thread_id', 'Unknown')
+        print(f"🆔 Thread ID: {thread_id}")
+        
+
+        
+        query = None
+        if isinstance(eval_sample, dict):
+            # Common patterns for queries in evaluation data
+            query = (eval_sample.get('inputs.query') or 
+                    eval_sample.get('query') or 
+                    eval_sample.get('user_query') or 
+                    eval_sample.get('input') or
+                    eval_sample.get('prompt') or
+                    str(eval_sample) if eval_sample else None)
+        
+        # Try to extract response from outputs
+        response = None
+        if isinstance(eval_sample, dict):
+            # Common patterns for responses in evaluation data
+            response = (eval_sample.get('inputs.response') or 
+                       eval_sample.get('response') or 
+                       eval_sample.get('output') or 
+                       eval_sample.get('result') or
+                       eval_sample.get('completion') or
+                       str(eval_sample) if eval_sample else None)
+        
+
+        # Display query
+        if query:
+            print("🔍 USER QUERY:")
+            print(f"   {self._extract_texts_from_message(query)}")
+            print()
+        else:
+            print("🔍 USER QUERY: [Not available in sample data]")
+            print()
+        
+        # Display response
+        if response:
+            print("🤖 SYSTEM RESPONSE:")
+            # Format long responses nicely
+            response = self._extract_texts_from_message(response)
+            if isinstance(response, str) and len(response) > 200:
+                # Break long responses into readable chunks
+                words = response.split()
+                lines = []
+                current_line = []
+                current_length = 0
+
+                for word in words:
+                    if current_length + len(word) > 80:  # 80 chars per line
+                        if current_line:
+                            lines.append(" ".join(current_line))
+                            current_line = [word]
+                            current_length = len(word)
+                        else:
+                            lines.append(word)  # Word too long, add as is
+                    else:
+                        current_line.append(word)
+                        current_length += len(word) + 1  # +1 for space
+
+                # Append any remaining words as the last line
+                if current_line:
+                    lines.append(" ".join(current_line))
+
+            print(response)
+            print()
+        else:
+            print("🤖 SYSTEM RESPONSE: [Not available in sample data]")
+            print()
+
+    def _extract_texts_from_message(self, message: List[Dict]) -> str:
+        """
+        Extracts text content from a list of message dictionaries.
+        """
+        texts = []
+        role = ""
+        for entry in message:
+            if "role" in entry:
+                role = entry["role"]
+                texts.append(f"{role}:")
+            if 'content' in entry:
+                for content in entry['content']:
+                    if content['type'] == 'text':
+                        texts.append(content['text'])
+        return "\n".join(texts)
