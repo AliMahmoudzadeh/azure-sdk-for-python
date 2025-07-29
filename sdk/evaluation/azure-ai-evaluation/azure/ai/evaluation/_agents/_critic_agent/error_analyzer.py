@@ -82,14 +82,12 @@ class ErrorAnalyzer:
         for eval_data in evaluations:
             thread_id = eval_data.get('thread_id')
             results = eval_data.get('results', {})
-            
+            conversation = eval_data.get('conversation', {})
+
             eval_issues = {}
             
             for eval_name, eval_result in results.items():
-                if eval_name.lower() in eval_result:
-                    eval_field_name = eval_name.lower()
-                else:
-                    eval_field_name = self._camel_to_snake(eval_name)
+                eval_field_name = self._camel_to_snake(eval_name)
                 if fails_only:
                     # Only include if result is 'fail'
                     if eval_result.get(f'{eval_field_name}_result') == 'fail':
@@ -104,7 +102,8 @@ class ErrorAnalyzer:
             if eval_issues:
                 imperfect_evaluations.append({
                     'thread_id': thread_id,
-                    'results': eval_issues
+                    'results': eval_issues,
+                    'conversation': conversation
                 })
         
         return imperfect_evaluations
@@ -511,7 +510,7 @@ class ErrorAnalyzer:
         for i, (name, cluster_info) in enumerate(clusters.items()):
             pie_data.append(cluster_info['weight'])
             # Truncate labels for pie chart
-            label = name[:60] + '...' if len(name) > 40 else name
+            label = name[:60] + '...' if len(name) > 60 else name
             pie_labels.append(f"{label}...")
 
         # Add "uncovered" if coverage < 100%
@@ -542,15 +541,13 @@ class ErrorAnalyzer:
         plt.show()
 
     
-    def create_interactive_drill_down(self, report: Dict[str, Any], 
-                                     original_evaluations: Optional[List[Dict[str, Any]]] = None) -> None:
+    def create_interactive_drill_down(self, report: Dict[str, Any]) -> None:
         """
         Create an interactive drill-down visualization using clickable plotly charts.
         Users can click on pie chart slices to see error tags, then click on bars to see full samples.
         
         Args:
-            report: Complete enhanced report from generate_enhanced_report
-            original_evaluations: Optional list of original evaluation data with full samples
+            report: Complete enhanced report from generate_enhanced_report (raw_imperfect_data contains conversations)
         """
         try:
             import plotly.graph_objects as go
@@ -583,8 +580,7 @@ class ErrorAnalyzer:
         self._drill_data = {
             'clusters': clusters,
             'reason_mapping': reason_mapping,
-            'raw_data': raw_data,
-            'original_evaluations': original_evaluations
+            'raw_data': raw_data
         }
         
         # Create and show the clickable pie chart overview
@@ -759,7 +755,6 @@ class ErrorAnalyzer:
         """Show full conversation samples for a specific error tag."""
         reason_mapping = self._drill_data['reason_mapping']
         raw_data = self._drill_data['raw_data']
-        original_evaluations = self._drill_data['original_evaluations']
         
         print(f"🔍 SAMPLES FOR ERROR TAG: {tag}")
         print("═" * 80)
@@ -769,7 +764,6 @@ class ErrorAnalyzer:
         
         # Find evaluations related to this tag
         reasons_to_names = reason_mapping.get('reasons_to_names', {})
-        reasons_to_eval_types = reason_mapping.get('reasons_to_eval_types', {})
         
         # Find reasons that map to this tag
         related_reasons = [reason for reason, mapped_tag in reasons_to_names.items() if mapped_tag == tag]
@@ -778,8 +772,8 @@ class ErrorAnalyzer:
             print("❌ No related reasons found for this tag")
             return
         
-        # Find thread IDs that have evaluations with these reasons
-        matching_thread_ids = []
+        # Find evaluations that have these reasons (conversations are already in raw_data)
+        matching_evaluations = []
         for eval_data in raw_data:
             results = eval_data.get('results', {})
             for eval_name, eval_result in results.items():
@@ -790,125 +784,115 @@ class ErrorAnalyzer:
                 reason_key = f'{eval_field_name}_reason'
                 reason = eval_result.get(reason_key, '')
                 if reason in related_reasons:
-                    thread_id = eval_data.get('thread_id')
-                    if thread_id and thread_id not in matching_thread_ids:
-                        matching_thread_ids.append(thread_id)
+                    matching_evaluations.append(eval_data)
+                    break  # Found a match for this evaluation, no need to check other eval types
         
-        if not matching_thread_ids:
+        if not matching_evaluations:
             print("❌ No matching samples found")
             return
         
-        print(f"📊 Found {len(matching_thread_ids)} samples with this error tag")
-        print(f"📋 Showing first {min(3, len(matching_thread_ids))} samples:\n")
+        print(f"📊 Found {len(matching_evaluations)} samples with this error tag")
+        print(f"📋 Showing first {min(3, len(matching_evaluations))} samples:\n")
         
         # Show up to 3 samples
-        samples_shown = 0
-        for thread_id in matching_thread_ids[:3]:
-            samples_shown += 1
-            
-            print(f"📝 SAMPLE {samples_shown} of {len(matching_thread_ids)}")
+        for i, eval_data in enumerate(matching_evaluations[:3]):
+            print(f"📝 SAMPLE {i+1} of {len(matching_evaluations)}")
             print("─" * 60)
             
-            # Find the original evaluation sample
-            eval_sample = None
-            if original_evaluations:
-                eval_sample = next((sample for sample in original_evaluations 
-                                   if sample.get('thread_id') == thread_id), None)
-            print("EVAL SAMEPL")
-            print(eval_sample.keys())
-            if eval_sample:
-                # Get evaluation details from cluster data
-                cluster_eval_info = {}
-                for eval_data in raw_data:
-                    if eval_data.get('thread_id') == thread_id:
-                        results = eval_data.get('results', {})
-                        for eval_name, eval_result in results.items():
-                            if eval_name.lower() in eval_result:
-                                eval_field_name = eval_name.lower()
-                            else:
-                                eval_field_name = self._camel_to_snake(eval_name)
-                            reason_key = f'{eval_field_name}_reason'
-                            reason = eval_result.get(reason_key, '')
-                            if reason in related_reasons:
-                                score_key = f'{eval_field_name}_score'
-                                score = eval_result.get(score_key, eval_result.get(eval_field_name, 'N/A'))
-                                result_key = f'{eval_field_name}_result'
-                                result = eval_result.get(result_key, 'N/A')
-                                cluster_eval_info[eval_name] = {
-                                    'score': score,
-                                    'result': result,
-                                    'reason': reason,
-                                    'tag': tag
-                                }
-                
-                # Show well-formatted query-response conversation
-                self._display_formatted_conversation(eval_sample)
-                
-                # Show cluster-based evaluation details (from cluster data, not outputs)
-                if cluster_eval_info:
-                    print("🎯 EVALUATION ANALYSIS")
-                    print("─" * 50)
-                    print(f"🏷️  Error Tag: {tag}")
-                    print(f"🎯 Related Cluster: {cluster_name}")
-                    print()
-                    
-                    for eval_name, eval_info in cluster_eval_info.items():
-                        print(f"📊 {eval_name} Evaluation:")
-                        
-                        # Format score nicely
-                        score = eval_info['score']
-                        if isinstance(score, (int, float)):
-                            score_display = f"{score:.2f}" if isinstance(score, float) else str(score)
-                            # Add visual indicator for score
-                            if isinstance(score, (int, float)) and score <= 2:
-                                score_display += " ❌ (Poor)"
-                            elif isinstance(score, (int, float)) and score <= 3:
-                                score_display += " ⚠️  (Fair)" 
-                            elif isinstance(score, (int, float)) and score >= 4:
-                                score_display += " ✅ (Good)"
-                        else:
-                            score_display = str(score)
-                        
-                        print(f"   • Score: {score_display}")
-                        print(f"   • Result: {eval_info['result']}")
-                        
-                        # Format reason nicely (wrap long reasons)
-                        reason = eval_info['reason']
-                        if len(reason) > 80:
-                            # Wrap long reasons
-                            reason_words = reason.split()
-                            reason_lines = []
-                            current_line = []
-                            current_length = 0
-                            
-                            for word in reason_words:
-                                if current_length + len(word) > 75:
-                                    if current_line:
-                                        reason_lines.append(" ".join(current_line))
-                                        current_line = [word]
-                                        current_length = len(word)
-                                else:
-                                    current_line.append(word)
-                                    current_length += len(word) + 1
-                            
-                            if current_line:
-                                reason_lines.append(" ".join(current_line))
-                            
-                            print(f"   • Reason:")
-                            for line in reason_lines:
-                                print(f"     {line}")
-                        else:
-                            print(f"   • Reason: {reason}")
-                        print()
+            thread_id = eval_data.get('thread_id', 'Unknown')
+            conversation = eval_data.get('conversation', {})
+            
+            # Show well-formatted query-response conversation
+            self._display_formatted_conversation_from_data(conversation, thread_id)
+            
+            # Show evaluation details for this specific tag
+            results = eval_data.get('results', {})
+            cluster_eval_info = {}
+            
+            for eval_name, eval_result in results.items():
+                if eval_name.lower() in eval_result:
+                    eval_field_name = eval_name.lower()
                 else:
-                    print("⚠️  No evaluation details found in cluster data for this sample")
-                    print()
-                
-                print("═" * 70)
+                    eval_field_name = self._camel_to_snake(eval_name)
+                reason_key = f'{eval_field_name}_reason'
+                reason = eval_result.get(reason_key, '')
+                if reason in related_reasons:
+                    score_key = f'{eval_field_name}_score'
+                    score = eval_result.get(score_key, eval_result.get(eval_field_name, 'N/A'))
+                    result_key = f'{eval_field_name}_result'
+                    result = eval_result.get(result_key, 'N/A')
+                    cluster_eval_info[eval_name] = {
+                        'score': score,
+                        'result': result,
+                        'reason': reason,
+                        'tag': tag
+                    }
+            
+            # Show cluster-based evaluation details
+            if cluster_eval_info:
+                print("🎯 EVALUATION ANALYSIS")
+                print("─" * 50)
+                print(f"🏷️  Error Tag: {tag}")
+                print(f"🎯 Related Cluster: {cluster_name}")
                 print()
                 
-        if samples_shown < len(matching_thread_ids):
-            remaining = len(matching_thread_ids) - samples_shown
+                for eval_name, eval_info in cluster_eval_info.items():
+                    print(f"📊 {eval_name} Evaluation:")
+                    
+                    # Format score nicely
+                    score = eval_info['score']
+                    if isinstance(score, (int, float)):
+                        score_display = f"{score:.2f}" if isinstance(score, float) else str(score)
+                        # Add visual indicator for score
+                        if isinstance(score, (int, float)) and score <= 2:
+                            score_display += " ❌ (Poor)"
+                        elif isinstance(score, (int, float)) and score <= 3:
+                            score_display += " ⚠️  (Fair)" 
+                        elif isinstance(score, (int, float)) and score >= 4:
+                            score_display += " ✅ (Good)"
+                    else:
+                        score_display = str(score)
+                    
+                    print(f"   • Score: {score_display}")
+                    print(f"   • Result: {eval_info['result']}")
+                    
+                    # Format reason nicely (wrap long reasons)
+                    reason = eval_info['reason']
+                    if len(reason) > 80:
+                        # Wrap long reasons
+                        reason_words = reason.split()
+                        reason_lines = []
+                        current_line = []
+                        current_length = 0
+                        
+                        for word in reason_words:
+                            if current_length + len(word) > 75:
+                                if current_line:
+                                    reason_lines.append(" ".join(current_line))
+                                    current_line = [word]
+                                    current_length = len(word)
+                            else:
+                                current_line.append(word)
+                                current_length += len(word) + 1
+                        
+                        if current_line:
+                            reason_lines.append(" ".join(current_line))
+                        
+                        print(f"   • Reason:")
+                        for line in reason_lines:
+                            print(f"     {line}")
+                    else:
+                        print(f"   • Reason: {reason}")
+                    print()
+            else:
+                print("⚠️  No evaluation details found for this sample")
+                print()
+            
+            print("═" * 70)
+            print()
+                
+        if len(matching_evaluations) > 3:
+            remaining = len(matching_evaluations) - 3
             print(f"... and {remaining} more samples with this error tag.")
         
         # Add back button
@@ -933,6 +917,75 @@ class ErrorAnalyzer:
             
         except ImportError:
             print("📌 Use the interactive interface above to navigate back")
+
+    def _display_formatted_conversation_from_data(self, conversation: Dict[str, Any], thread_id: str) -> None:
+        """
+        Display a well-formatted conversation from conversation data in raw_imperfect_data.
+        
+        Args:
+            conversation: Conversation data from raw_imperfect_data
+            thread_id: Thread ID for reference
+        """
+        print("💬 CONVERSATION DETAILS")
+        print("─" * 50)
+        print(f"🆔 Thread ID: {thread_id}")
+        print()
+        
+        # Extract query and response from conversation data
+        query = conversation.get('query', 'N/A')
+        response = conversation.get('response', 'N/A')
+        
+        # Display query
+        print("🔍 USER QUERY:")
+        if query and query != 'N/A':
+            if isinstance(query, list):
+                query_text = self._extract_texts_from_message(query)
+            else:
+                query_text = str(query)
+            print(f"   {query_text}")
+        else:
+            print("   [Not available in conversation data]")
+        print()
+        
+        # Display response
+        print("🤖 SYSTEM RESPONSE:")
+        if response and response != 'N/A':
+            if isinstance(response, list):
+                response_text = self._extract_texts_from_message(response)
+            else:
+                response_text = str(response)
+            
+            # Format long responses nicely
+            if len(response_text) > 200:
+                # Break long responses into readable chunks
+                words = response_text.split()
+                lines = []
+                current_line = []
+                current_length = 0
+
+                for word in words:
+                    if current_length + len(word) > 80:  # 80 chars per line
+                        if current_line:
+                            lines.append(" ".join(current_line))
+                            current_line = [word]
+                            current_length = len(word)
+                        else:
+                            lines.append(word)  # Word too long, add as is
+                    else:
+                        current_line.append(word)
+                        current_length += len(word) + 1  # +1 for space
+
+                # Append any remaining words as the last line
+                if current_line:
+                    lines.append(" ".join(current_line))
+                
+                for line in lines:
+                    print(f"   {line}")
+            else:
+                print(f"   {response_text}")
+        else:
+            print("   [Not available in conversation data]")
+        print()
 
     def _display_formatted_conversation(self, eval_sample: Dict[str, Any]) -> None:
         """
@@ -1020,21 +1073,37 @@ class ErrorAnalyzer:
             print("🤖 SYSTEM RESPONSE: [Not available in sample data]")
             print()
 
-    def _extract_texts_from_message(self, message: List[Dict]) -> str:
+    def _extract_texts_from_message(self, message: Any) -> str:
         """
-        Extracts text content from a list of message dictionaries.
+        Extracts text content from various message formats.
+        
+        Args:
+            message: Can be a list of dicts, string, or other format
+            
+        Returns:
+            Extracted text as string
         """
-        texts = []
-        role = ""
-        for entry in message:
-            if "role" in entry:
-                role = entry["role"]
-                texts.append(f"{role}:")
-            if 'content' in entry:
-                if isinstance(entry['content'], str):
-                    texts.append(entry['content'])
-                else:
-                    for content in entry['content']:
-                        if content['type'] == 'text':
-                            texts.append(content['text'])
-        return "\n".join(texts)
+        if isinstance(message, str):
+            return message
+        elif isinstance(message, list):
+            texts = []
+            for entry in message:
+                if isinstance(entry, dict):
+                    if "role" in entry:
+                        role = entry["role"]
+                        texts.append(f"{role}:")
+                    if 'content' in entry:
+                        content = entry['content']
+                        if isinstance(content, list):
+                            for content_item in content:
+                                if isinstance(content_item, dict) and content_item.get('type') == 'text':
+                                    texts.append(content_item.get('text', ''))
+                        elif isinstance(content, str):
+                            texts.append(content)
+                    elif 'text' in entry:
+                        texts.append(entry['text'])
+                elif isinstance(entry, str):
+                    texts.append(entry)
+            return "\n".join(texts)
+        else:
+            return str(message)

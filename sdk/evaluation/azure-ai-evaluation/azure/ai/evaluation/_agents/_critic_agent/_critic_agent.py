@@ -490,21 +490,15 @@ class CriticAgent(PromptyEvaluatorBase[Dict[str, Union[str, List[str]]]]):
         
     def interactive_error_analysis(
         self,
-        error_analysis_report: Dict[str, Any],
-        original_evaluations: List[Dict[str, Any]],
-        **kwargs
+        error_analysis_report: Dict[str, Any]
     ):
         """
         Create an interactive error analysis drill-down.
 
         :param error_analysis_report: The error analysis report to use for drill-down
         :type error_analysis_report: Dict[str, Any]
-        :param original_evaluations: Original evaluations to include in the drill-down
-        :type original_evaluations: List[Dict[str, Any]]
         """
         analyzer = ErrorAnalyzer()
         analyzer.create_interactive_drill_down(
-            report=error_analysis_report,
-            original_evaluations=original_evaluations,
-            **kwargs
+            report=error_analysis_report
         )
