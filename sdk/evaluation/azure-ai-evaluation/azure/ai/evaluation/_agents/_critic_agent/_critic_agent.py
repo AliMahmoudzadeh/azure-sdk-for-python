@@ -14,6 +14,7 @@ from azure.ai.evaluation._common._experimental import experimental
 from azure.ai.evaluation._evaluators._intent_resolution import IntentResolutionEvaluator
 from azure.ai.evaluation._evaluators._tool_call_accuracy import ToolCallAccuracyEvaluator
 from azure.ai.evaluation._evaluators._task_adherence import TaskAdherenceEvaluator
+
 from .error_analyzer import ErrorAnalyzer
 
 logger = logging.getLogger(__name__)
@@ -40,7 +41,7 @@ class CriticAgent(PromptyEvaluatorBase[Dict[str, Union[str, List[str]]]]):
     2) The constructor initializes the agent with the model configuration.
     3) The evaluate method supports multiple signatures:
        - evaluation_results = critic_agent.evaluate(thread_id, evaluation=Optional[None])
-       - evaluation_results = critic_agent.evaluate(agent_id, azure_ai_project=Optional[str], evaluation=Optional[IntentResolution, ToolCallAccuracy, TaskAdherence])
+       - evaluation_results = critic_agent.evaluate(agent_id, azure_ai_project=Optional[str], evaluation=Optional[IntentResolution, , TaskAdherence])
 
     The data fetching from agent_id automates the code pattern from Azure AI Foundry agent evaluation samples.
     """
@@ -257,6 +258,7 @@ class CriticAgent(PromptyEvaluatorBase[Dict[str, Union[str, List[str]]]]):
             result["justification"] = evaluation_selection_results.get("justification", "")
             result["distinct_assessments"] = evaluation_selection_results.get("distinct_assessments", "")
         evaluator_instances = {name: self.evaluator_instances[name] for name in evaluators_to_run}
+        print(f"Running evaluators: {list(evaluator_instances.keys())} on thread {thread_id}")
         conversation_results = self._run_evaluators_on_conversation(
             evaluator_instances, conversation
         )
@@ -340,8 +342,8 @@ class CriticAgent(PromptyEvaluatorBase[Dict[str, Union[str, List[str]]]]):
         query = conversation_data.get("query", "")
         response = conversation_data.get("response", "")
         tool_definitions = conversation_data.get("tool_definitions", [])
-        tool_calls = conversation_data.get("tool_calls", [])
-
+        tool_calls = [r.get("content", [{}])[0].get("tool_call_id", None) for r in response if r.get("content", [{}])[0].get("tool_call_id", None) is not None]
+        
         # Run evaluators in parallel using ThreadPoolExecutor
         with ThreadPoolExecutor(max_workers=3) as executor:
             future_to_evaluator = {}

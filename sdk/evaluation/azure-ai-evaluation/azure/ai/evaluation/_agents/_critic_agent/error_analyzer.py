@@ -120,7 +120,7 @@ class ErrorAnalyzer:
         """
         patterns = {
             'evaluation_types': defaultdict(int),
-            'score_distribution': defaultdict(lambda: defaultdict(int)),
+            # 'score_distribution': defaultdict(lambda: defaultdict(int)),
             'reasons': defaultdict(list),
             'total_issues': 0,
             'total_threads': len(imperfect_evaluations)
@@ -137,8 +137,8 @@ class ErrorAnalyzer:
                 
                 # Extract score
                 score =  eval_result.get(eval_field_name)
-                if score is not None:
-                    patterns['score_distribution'][eval_name][score] += 1
+                # if score is not None:
+                #     patterns['score_distribution'][eval_name][score] += 1
                 
                 # Extract reason
                 reason_key = f'{eval_field_name}_reason'
@@ -344,7 +344,7 @@ class ErrorAnalyzer:
             'total_issues': patterns['total_issues'],
             'total_threads': patterns['total_threads'],
             'evaluation_types_frequency': dict(patterns['evaluation_types']),
-            'score_distributions': {k: dict(v) for k, v in patterns['score_distribution'].items()},
+            # 'score_distributions': {k: dict(v) for k, v in patterns['score_distribution'].items()},
             'sample_reasons': {k: v[:5] for k, v in patterns['reasons'].items()}  # First 5 reasons per type
         }
         
@@ -1091,13 +1091,15 @@ class ErrorAnalyzer:
                 if isinstance(entry, dict):
                     if "role" in entry:
                         role = entry["role"]
-                        texts.append(f"{role}:")
+                        texts.append(f"\n{role}:\n")
                     if 'content' in entry:
                         content = entry['content']
                         if isinstance(content, list):
                             for content_item in content:
                                 if isinstance(content_item, dict) and content_item.get('type') == 'text':
                                     texts.append(content_item.get('text', ''))
+                                elif isinstance(content_item, dict) and content_item.get('type') == 'tool_result':
+                                    texts.append(str(content_item.get('tool_result', '')))
                         elif isinstance(content, str):
                             texts.append(content)
                     elif 'text' in entry:
