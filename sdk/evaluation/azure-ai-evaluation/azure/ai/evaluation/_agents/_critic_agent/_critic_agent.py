@@ -15,7 +15,7 @@ from azure.ai.evaluation._evaluators._intent_resolution import IntentResolutionE
 from azure.ai.evaluation._evaluators._tool_call_accuracy import ToolCallAccuracyEvaluator
 from azure.ai.evaluation._evaluators._task_adherence import TaskAdherenceEvaluator
 
-from .error_analyzer import ErrorAnalyzer
+from error_analyzer import ErrorAnalyzer
 
 logger = logging.getLogger(__name__)
 
@@ -164,9 +164,11 @@ class CriticAgent(PromptyEvaluatorBase[Dict[str, Union[str, List[str]]]]):
                 credential=DefaultAzureCredential(),
             )
 
-            thread_ids = self._fetch_agent_threads(project_client, agent_id, max_threads=max_threads)
+            thread_ids = self._fetch_agent_threads(project_client, agent_id)
             results = []
             for thread_id in thread_ids:
+                if max_threads == 0:
+                    break
                 evaluated_result = self._evaluate_conversation(
                     thread_id=thread_id,
                     azure_ai_project=azure_ai_project,
@@ -175,7 +177,9 @@ class CriticAgent(PromptyEvaluatorBase[Dict[str, Union[str, List[str]]]]):
                     **kwargs
                 )
                 if evaluated_result is not None:
+                    max_threads -= 1
                     results.append(evaluated_result)
+                    logger.info(f"Thread {max_threads} Evaluated thread {thread_id} for agent {agent_id}.")
             return results
 
         except Exception as e:
@@ -239,11 +243,16 @@ class CriticAgent(PromptyEvaluatorBase[Dict[str, Union[str, List[str]]]]):
         # Filter conversations if belongs to a specific agent
         try:
             # This needs converter changes
-            if agent_id and conversation["response"][0]["assistant_id"] != agent_id:
+            if not conversation or (
+                agent_id and not any(
+                    resp.get("assistant_id") == agent_id for resp in conversation.get("response", [])
+                )
+            ):
                 logger.info(f"Skipping conversation {thread_id} for agent {agent_id}.")
                 return None
         except Exception as e:
-            pass
+            logger.error(f"Error filtering conversation for agent {agent_id} and thread {thread_id}: {str(e)}")
+            return None
         result = {}
         if evaluators_to_run is None:
             # Fix error: asyncio.run cannot be called from a running event loop
@@ -257,6 +266,12 @@ class CriticAgent(PromptyEvaluatorBase[Dict[str, Union[str, List[str]]]]):
             print(f"Selected evaluators: {evaluators_to_run} for thread {thread_id}")
             result["justification"] = evaluation_selection_results.get("justification", "")
             result["distinct_assessments"] = evaluation_selection_results.get("distinct_assessments", "")
+        if not evaluators_to_run:
+            logger.warning(f"No evaluators to run for thread {thread_id}.")
+            result["thread_id"] = thread_id
+            result["results"] = {}
+            result["conversation"] = conversation
+            return result
         evaluator_instances = {name: self.evaluator_instances[name] for name in evaluators_to_run}
         print(f"Running evaluators: {list(evaluator_instances.keys())} on thread {thread_id}")
         conversation_results = self._run_evaluators_on_conversation(
@@ -267,7 +282,7 @@ class CriticAgent(PromptyEvaluatorBase[Dict[str, Union[str, List[str]]]]):
         result["conversation"] = conversation
         return result
 
-    def _fetch_agent_threads(self, project_client: Any, agent_id: str, max_threads: int = -1) -> List[str]:
+    def _fetch_agent_threads(self, project_client: Any, agent_id: str) -> List[str]:
         """
         Fetch conversation data for an agent from Azure AI Project.
         This implements the pattern from the Azure AI samples for agent evaluation.
@@ -288,10 +303,7 @@ class CriticAgent(PromptyEvaluatorBase[Dict[str, Union[str, List[str]]]]):
             # threads = ["thread_oDhHDz6HgjTqSLE8FVJy6Ord"]
             for thread in threads:
                 # print(thread)
-                if max_threads == 0:
-                    break
                 thread_ids.append(thread.id)
-                max_threads -= 1
                 # Convert to evaluation format
             print(f"Fetched {len(thread_ids)} threads for agent {agent_id}.")
             return thread_ids
