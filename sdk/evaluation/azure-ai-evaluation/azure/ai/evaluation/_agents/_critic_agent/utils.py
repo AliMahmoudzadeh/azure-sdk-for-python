@@ -9,65 +9,61 @@ def visualize_data_analyzer_2d(data_analysis_results, subcluster=True):
         subcluster: If True, show subcluster view; else, entry-level view.
     """
     axes = data_analysis_results.get('axes', ['x','y'])
-    if subcluster:
-        subclusters = data_analysis_results['subclusters']
-        clusters = data_analysis_results['clusters']
-        rows = []
-        cluster_lookup = {}
-        for cname, cinfo in clusters.items():
-            for scl in cinfo.get('subcluster_labels', []):
-                cluster_lookup[scl] = cname
+    entries = data_analysis_results['entries']
+    subclusters = data_analysis_results['subclusters']
+    clusters = data_analysis_results['clusters']
+    # Prepare entry points
+    rows_e = []
+    for e in entries:
+        coord = e.get('coordinates', [None, None])
+        rows_e.append({
+            axes[0]: coord[0],
+            axes[1]: coord[1],
+            'entry_id': e['id'],
+            'subcluster': e['subcluster_label'],
+            'conversation_turns': e['metadata'].get('conversation_turns'),
+        })
+    df_e = pd.DataFrame(rows_e)
+    fig = None
+    if not df_e.empty:
+        fig = px.scatter(
+            df_e,
+            x=axes[0],
+            y=axes[1],
+            color='subcluster',
+            hover_data=['entry_id','subcluster','conversation_turns'],
+            title='Entry Map Colored by Subcluster'
+        )
+        fig.update_layout(legend_title_text='Subcluster')
+        # Add subcluster labels as text at subcluster coordinates
         for label, info in subclusters.items():
             coord = info.get('coordinates', [None, None])
-            rows.append({
-                axes[0]: coord[0],
-                axes[1]: coord[1],
-                'subcluster': label,
-                'count': info.get('count', 0),
-                'cluster': cluster_lookup.get(label)
-            })
-        df_sc = pd.DataFrame(rows)
-        if not df_sc.empty:
-            df_sc['size'] = df_sc['count'].apply(lambda c: 5*c)
-            fig = px.scatter(
-                df_sc,
-                x=axes[0],
-                y=axes[1],
-                size='size',
-                color='cluster',
-                hover_data=['subcluster','count','cluster'],
-                title='Subcluster Map (size ~ entry count)'
-            )
-            fig.update_layout(legend_title_text='Cluster')
-            fig.show()
-        else:
-            print('No subclusters to visualize')
+            if coord[0] is not None and coord[1] is not None:
+                fig.add_annotation(
+                    x=coord[0],
+                    y=coord[1],
+                    text=label,
+                    showarrow=False,
+                    font=dict(size=12, color='black', family='Arial'),
+                    bgcolor='rgba(255,255,255,0.0)',
+                    opacity=0.8
+                )
+        # Add cluster labels as larger, bold text at cluster coordinates
+        for cname, cinfo in clusters.items():
+            coord = cinfo.get('coordinates', [None, None])
+            if coord[0] is not None and coord[1] is not None:
+                fig.add_annotation(
+                    x=coord[0],
+                    y=coord[1],
+                    text=f'<b>{cname}</b>',
+                    showarrow=False,
+                    font=dict(size=18, color='black', family='Arial',),
+                    bgcolor='rgba(255,255,255,0.0)',
+                    opacity=0.95
+                )
+        fig.show()
     else:
-        entries = data_analysis_results['entries']
-        rows_e = []
-        for e in entries:
-            coord = e.get('coordinates', [None, None])
-            rows_e.append({
-                axes[0]: coord[0],
-                axes[1]: coord[1],
-                'entry_id': e['id'],
-                'subcluster': e['subcluster_label'],
-                'conversation_turns': e['metadata'].get('conversation_turns'),
-            })
-        df_e = pd.DataFrame(rows_e)
-        if not df_e.empty:
-            fig = px.scatter(
-                df_e,
-                x=axes[0],
-                y=axes[1],
-                color='subcluster',
-                hover_data=['entry_id','subcluster','conversation_turns'],
-                title='Entry Map Colored by Subcluster'
-            )
-            fig.update_layout(legend_title_text='Subcluster')
-            fig.show()
-        else:
-            print('No entries to visualize')
+        print('No entries to visualize')
 import pandas as pd
 import json
 from typing import List, Dict, Any, Optional

@@ -15,7 +15,7 @@ from azure.ai.evaluation._evaluators._intent_resolution import IntentResolutionE
 from azure.ai.evaluation._evaluators._tool_call_accuracy import ToolCallAccuracyEvaluator
 from azure.ai.evaluation._evaluators._task_adherence import TaskAdherenceEvaluator
 
-from error_analyzer import ErrorAnalyzer
+from data_analyzer import DataAnalyzer, visualize_data_analyzer_2d
 
 logger = logging.getLogger(__name__)
 
@@ -210,7 +210,7 @@ class CriticAgent(PromptyEvaluatorBase[Dict[str, Union[str, List[str]]]]):
         """
         # This would integrate with the existing async _do_eval method
         # For conversation-based evaluation using the prompty
-        print("THREAD ID", thread_id)
+        # print("THREAD ID", thread_id)
         if not thread_id:
             raise EvaluationException(
                 message="Thread ID must be provided for conversation evaluation.",
@@ -460,7 +460,6 @@ class CriticAgent(PromptyEvaluatorBase[Dict[str, Union[str, List[str]]]]):
         evaluation_results: List[Dict[str, Any]],
         fails_only: bool = True,
         num_clusters: int = 10,
-        use_llm_analysis: bool = True,
         **kwargs
     ) -> Dict[str, Any]:
         """
@@ -477,17 +476,45 @@ class CriticAgent(PromptyEvaluatorBase[Dict[str, Union[str, List[str]]]]):
         :return: Error analysis report
         :rtype: Dict[str, Any]
         """
-        analyzer = ErrorAnalyzer()
-        report = analyzer.generate_enhanced_report(
-            evaluations=evaluation_results,
-            fails_only=fails_only,
-            num_clusters=num_clusters,
-            use_llm_analysis=use_llm_analysis,
-            **kwargs
-        )
+        data_analyzer = DataAnalyzer()
+        # format results for analysis
+        def extract_score_from_eval(data):
+            """Extract the evaluation score from the analysis report."""
+            for k,v in data.items():
+                if ("_result" not in k) and ("_threshold" not in k) and ("_reason" not in k):
+                    return {"score": v}
+            return None
+        
+        # transform to be used by dataanalyzer
+        data_analyzer_input = []
+        for result in evaluation_results:
+            for eval, evaluation in result.get("results", {}).items():
+                metadata = extract_score_from_eval(evaluation)
+                metadata["study"] = "evaluation error"
+                metadata["thread_id"] = result.get("thread_id")
+                entry = {
+                    "context": evaluation,
+                    "conversation": result.get("conversation"),
+                    "metadata": metadata,
+                    "evaluation": evaluation,
+                }
+                data_analyzer_input.append(entry)
+        # return data_analyzer_input
+
+        if fails_only:
+        # filter data_analyzer_input to entries with metadata/score less than 3
+            data_analyzer_input = [
+                entry for entry in data_analyzer_input if entry.get("metadata", {}).get("score", 0) < 3
+            ]
+            print(f"filtered results to {len(data_analyzer_input)} evaluations with failed status")
+
+        import json
+        with open("data/formatted_evaluations.json", "w") as f:
+            json.dump(data_analyzer_input, f, indent=4)
+        report = data_analyzer.analyze(entries=data_analyzer_input, num_clusters=num_clusters)
         return report
 
-    def visualize_errors(self, error_analysis_report: Dict[str, Any], figsize: tuple = (12, 10)):
+    def visualize_errors(self, data_analysis_results: Dict[str, Any], figsize: tuple = (12, 10)):
         """
         Visualize the error analysis report.
 
@@ -496,23 +523,7 @@ class CriticAgent(PromptyEvaluatorBase[Dict[str, Union[str, List[str]]]]):
         :param figsize: Size of the figure for visualization
         :type figsize: tuple
         """
-        analyzer = ErrorAnalyzer()
-        analyzer.visualize_cluster_results(
-            cluster_results=error_analysis_report.get("error_clusters", {}),
-            figsize=figsize
-        )
-        
-    def interactive_error_analysis(
-        self,
-        error_analysis_report: Dict[str, Any]
-    ):
-        """
-        Create an interactive error analysis drill-down.
+        from data_analyzer import visualize_data_analyzer_2d
 
-        :param error_analysis_report: The error analysis report to use for drill-down
-        :type error_analysis_report: Dict[str, Any]
-        """
-        analyzer = ErrorAnalyzer()
-        analyzer.create_interactive_drill_down(
-            report=error_analysis_report
-        )
+        visualize_data_analyzer_2d(data_analysis_results)
+        

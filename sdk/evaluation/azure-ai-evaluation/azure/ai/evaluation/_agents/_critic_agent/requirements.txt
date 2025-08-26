@@ -6,3 +6,9 @@ ipywidgets
 semantic-kernel
 azure-identity
 azure-ai-projects
+sentence-transformers
+numpy
+scikit-learn
+hdbscan
+python-dotenv
+openai
