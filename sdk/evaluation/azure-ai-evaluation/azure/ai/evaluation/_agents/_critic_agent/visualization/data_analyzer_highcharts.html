@@ -1,0 +1,1907 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Data Analyzer - Highcharts</title>
+    <script src="https://code.highcharts.com/highcharts.js"></script>
+    <script src="https://code.highcharts.com/modules/scatter.js"></script>
+    <script src="https://code.highcharts.com/modules/heatmap.js"></script>
+    <script src="https://code.highcharts.com/modules/treemap.js"></script>
+    <script src="https://code.highcharts.com/modules/exporting.js"></script>
+    <script src="https://code.highcharts.com/modules/export-data.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked@9.0.0/marked.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .container {
+            display: flex;
+            height: 100vh;
+            background: rgba(255, 255, 255, 0.95);
+            margin: 10px;
+            border-radius: 15px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+
+        .left-panel {
+            width: 280px;
+            background: linear-gradient(180deg, #f8f9ff 0%, #e8ecff 100%);
+            border-right: 1px solid #e0e6ff;
+            padding: 20px;
+            overflow-y: auto;
+        }
+
+        .center-panel {
+            flex: 1;
+            background: white;
+            padding: 20px;
+            position: relative;
+        }
+
+        .right-panel {
+            width: 300px;
+            background: linear-gradient(180deg, #f8f9ff 0%, #e8ecff 100%);
+            border-left: 1px solid #e0e6ff;
+            padding: 20px;
+            overflow-y: auto;
+        }
+
+        .panel-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: #2d3748;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #667eea;
+        }
+
+        .control-group {
+            margin-bottom: 25px;
+        }
+
+        .control-label {
+            display: block;
+            font-size: 14px;
+            font-weight: 500;
+            color: #4a5568;
+            margin-bottom: 8px;
+        }
+
+        .control-input {
+            width: 100%;
+            padding: 10px 12px;
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: all 0.3s ease;
+            background: white;
+        }
+
+        .control-input:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .file-input {
+            position: relative;
+            overflow: hidden;
+            display: inline-block;
+            width: 100%;
+        }
+
+        .file-input input[type=file] {
+            position: absolute;
+            left: -9999px;
+        }
+
+        .file-input-label {
+            display: block;
+            padding: 10px 12px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 8px;
+            cursor: pointer;
+            text-align: center;
+            font-weight: 500;
+            transition: all 0.3s ease;
+        }
+
+        .file-input-label:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+        }
+
+        .chart-container {
+            width: 100%;
+            height: calc(100vh - 100px);
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+        }
+
+        .info-card {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
+            border-left: 4px solid #667eea;
+        }
+
+        .info-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: #2d3748;
+            margin-bottom: 12px;
+        }
+
+        .info-content {
+            font-size: 14px;
+            color: #4a5568;
+            line-height: 1.6;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .stat-item {
+            background: #f7fafc;
+            padding: 12px;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 18px;
+            font-weight: 600;
+            color: #667eea;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            color: #718096;
+            margin-top: 4px;
+        }
+
+        .filter-section {
+            margin-top: 15px;
+        }
+
+        .filter-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 8px;
+            padding: 8px;
+            background: white;
+            border-radius: 6px;
+            border: 1px solid #e2e8f0;
+        }
+
+        .filter-checkbox {
+            margin-right: 8px;
+        }
+
+        .filter-label {
+            font-size: 13px;
+            color: #4a5568;
+            flex: 1;
+        }
+
+        .active-filter {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: #e6fffa;
+            border: 1px solid #38b2ac;
+            padding: 8px 10px;
+            border-radius: 6px;
+            margin-bottom: 6px;
+            font-size: 12px;
+        }
+
+        .active-filter-text {
+            color: #234e52;
+            flex: 1;
+        }
+
+        .remove-filter {
+            background: #fc8181;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            padding: 2px 6px;
+            cursor: pointer;
+            font-size: 10px;
+        }
+
+        .remove-filter:hover {
+            background: #e53e3e;
+        }
+
+        .zoom-button {
+            transition: all 0.2s ease;
+            font-weight: 500;
+        }
+
+        .zoom-button:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+        }
+
+        .zoom-button:active {
+            transform: translateY(0);
+        }
+
+        /* Markdown styling for LLM analysis */
+        .markdown-content h1, .markdown-content h2, .markdown-content h3 {
+            color: #2d3748;
+            margin-top: 16px;
+            margin-bottom: 8px;
+        }
+
+        .markdown-content h1 {
+            font-size: 18px;
+            border-bottom: 2px solid #e2e8f0;
+            padding-bottom: 4px;
+        }
+
+        .markdown-content h2 {
+            font-size: 16px;
+        }
+
+        .markdown-content h3 {
+            font-size: 14px;
+        }
+
+        .markdown-content ul, .markdown-content ol {
+            margin: 8px 0;
+            padding-left: 20px;
+        }
+
+        .markdown-content li {
+            margin: 4px 0;
+            line-height: 1.5;
+        }
+
+        .markdown-content p {
+            margin: 8px 0;
+            line-height: 1.6;
+        }
+
+        .markdown-content strong {
+            font-weight: 600;
+            color: #2d3748;
+        }
+
+        .markdown-content em {
+            font-style: italic;
+            color: #4a5568;
+        }
+
+        .markdown-content code {
+            background: #f7fafc;
+            padding: 2px 4px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+        }
+
+        .markdown-content blockquote {
+            border-left: 4px solid #667eea;
+            margin: 8px 0;
+            padding-left: 12px;
+            color: #4a5568;
+            font-style: italic;
+        }
+
+        .collapsed {
+            display: none !important;
+        }
+
+        .expand-icon {
+            transition: transform 0.3s ease;
+        }
+
+        .expand-icon.collapsed {
+            transform: rotate(-90deg);
+        }
+
+        .no-data {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            color: #718096;
+            font-size: 16px;
+        }
+
+        .no-data-icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+            opacity: 0.5;
+        }
+
+        .loading {
+            display: none;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 16px;
+            color: #667eea;
+        }
+
+        .spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-right: 10px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .error-message {
+            background: #fed7d7;
+            color: #c53030;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            font-size: 14px;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Left Panel - Controls -->
+        <div class="left-panel">
+            <h2 class="panel-title">📊 Plot Controls</h2>
+            
+            <div class="error-message" id="errorMessage"></div>
+            
+            <div class="control-group">
+                <label class="control-label">📁 Choose File</label>
+                <div class="file-input">
+                    <input type="file" id="fileInput" accept=".json,.csv,.txt">
+                    <label for="fileInput" class="file-input-label">
+                        Select Data File
+                    </label>
+                </div>
+                <div id="fileName" style="margin-top: 8px; font-size: 12px; color: #718096;"></div>
+            </div>
+
+            <div class="control-group">
+                <label class="control-label" for="plotType">📈 Plot Type</label>
+                <select id="plotType" class="control-input">
+                    <option value="scatter">Scatter Plot</option>
+                    <option value="line">Line Chart</option>
+                    <option value="column">Column Chart</option>
+                    <option value="bar">Bar Chart</option>
+                    <option value="area">Area Chart</option>
+                    <option value="pie">Pie Chart</option>
+                    <option value="heatmap">Heatmap</option>
+                    <option value="treemap">Treemap</option>
+                    <option value="grouped_scatter_plot">Grouped Scatter (Clusters)</option>
+                </select>
+            </div>
+
+            <div class="control-group">
+                <label class="control-label" for="colorBy">🎨 Color By</label>
+                <select id="colorBy" class="control-input">
+                    <option value="subcluster_label">Subcluster</option>
+                </select>
+            </div>
+
+            <div class="control-group">
+                <label class="control-label" for="xAxis">📐 X-Axis</label>
+                <select id="xAxis" class="control-input">
+                    <option value="">Select X-Axis</option>
+                </select>
+            </div>
+
+            <div class="control-group">
+                <label class="control-label" for="yAxis">📏 Y-Axis</label>
+                <select id="yAxis" class="control-input">
+                    <option value="">Select Y-Axis</option>
+                </select>
+            </div>
+
+            <div class="control-group">
+                <label class="control-label">🔍 Zoom Controls</label>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                    <button onclick="enableBoxZoom()" class="zoom-button" id="boxZoomBtn" style="padding: 8px; background: #667eea; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">
+                        📦 Box Zoom
+                    </button>
+                    <button onclick="enablePan()" class="zoom-button" id="panBtn" style="padding: 8px; background: #e2e8f0; color: #4a5568; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">
+                        ✋ Pan Mode
+                    </button>
+                </div>
+                <div style="margin-top: 8px; font-size: 11px; color: #718096; line-height: 1.4;">
+                    • Mouse wheel: Zoom in/out<br>
+                    • Shift + drag: Pan around<br>
+                    • Box zoom: Drag to select area
+                </div>
+            </div>
+
+            <div class="control-group">
+                <label class="control-label">🔍 Filter By</label>
+                <div id="filterSection" class="filter-section">
+                    <div style="color: #718096; font-size: 13px; font-style: italic; margin-bottom: 10px;">
+                        Load data to see filter options
+                    </div>
+                    <div class="filter-controls" style="display: none;">
+                        <div style="display: grid; grid-template-columns: 1fr 80px 1fr; gap: 8px; margin-bottom: 12px;">
+                            <select id="filterKey" class="control-input" style="font-size: 12px; padding: 6px 8px;">
+                                <option value="">Select Field</option>
+                            </select>
+                            <select id="filterLogic" class="control-input" style="font-size: 12px; padding: 6px 8px;">
+                                <option value="=">=</option>
+                                <option value="!=">≠</option>
+                                <option value=">">&gt;</option>
+                                <option value="<">&lt;</option>
+                                <option value=">=">&gt;=</option>
+                                <option value="<=">&lt;=</option>
+                                <option value="contains">⊃</option>
+                            </select>
+                            <select id="filterValue" class="control-input" style="font-size: 12px; padding: 6px 8px;">
+                                <option value="">Select Value</option>
+                            </select>
+                        </div>
+                        <button id="addFilter" style="width: 100%; padding: 8px; background: #667eea; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; margin-bottom: 10px;">
+                            + Add Filter
+                        </button>
+                        <div id="activeFilters"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Center Panel - Chart -->
+        <div class="center-panel">
+            <div id="loading" class="loading">
+                <div class="spinner"></div>
+                Loading chart...
+            </div>
+            <div id="drilldownControls" style="position:absolute;top:10px;left:50%;transform:translateX(-50%);z-index:10;display:none;background:rgba(255,255,255,0.92);padding:6px 12px;border-radius:20px;box-shadow:0 2px 6px rgba(0,0,0,0.15);font-size:12px;line-height:1.4;">
+                <span id="drilldownBreadcrumb" style="color:#2d3748;font-weight:500;"></span>
+                <button id="drillupBtn" style="margin-left:8px;padding:4px 10px;border:none;background:#667eea;color:#fff;border-radius:12px;cursor:pointer;font-size:11px;">⬆️ Up</button>
+            </div>
+            <div id="chartContainer" class="chart-container">
+                <div class="no-data">
+                    <div class="no-data-icon">📊</div>
+                    <div>Load a data file to start visualizing</div>
+                    <div style="font-size: 14px; margin-top: 8px; opacity: 0.7;">
+                        Supports JSON, CSV, and TXT formats
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Panel - Information -->
+        <div class="right-panel">
+            <h2 class="panel-title">ℹ️ Information</h2>
+            
+            <div class="info-card">
+                <div class="info-title" style="display: flex; justify-content: space-between; align-items: center;">
+                    <span>📋 Dataset Info</span>
+                    <button id="datasetToggle" onclick="toggleDatasetInfo()" style="background: none; border: none; cursor: pointer; font-size: 16px; color: #667eea; padding: 0;">
+                        ▼
+                    </button>
+                </div>
+                <div class="info-content" id="datasetInfo">
+                    No data loaded
+                </div>
+                <div class="stats-grid" id="statsGrid" style="display: none;">
+                    <div class="stat-item">
+                        <div class="stat-value" id="totalRows">0</div>
+                        <div class="stat-label">Total Rows</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value" id="totalCols">0</div>
+                        <div class="stat-label">Columns</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="info-card">
+                <div class="info-title">ℹ️ Info Box</div>
+                <div class="info-content" id="infoBox">
+                    Hover over or click on a point to see details
+                </div>
+            </div>
+
+            <div class="info-card" id="llmAnalysisCard" style="display: none;">
+                <div class="info-title" style="display: flex; justify-content: space-between; align-items: center;">
+                    <span>🤖 LLM Analysis</span>
+                    <button id="llmToggle" onclick="toggleLLMAnalysis()" style="background: none; border: none; cursor: pointer; font-size: 16px; color: #667eea; padding: 0;">
+                        ▼
+                    </button>
+                </div>
+                <div class="info-content" id="llmAnalysisContent" style="max-height: 300px; overflow-y: auto;">
+                </div>
+            </div>
+
+            <div class="info-card">
+                <div class="info-title">📊 Chart Stats</div>
+                <div class="info-content" id="chartStats">
+                    Create a chart to see statistics
+                </div>
+            </div>
+
+            <div class="info-card">
+                <div class="info-title">🔧 Quick Actions</div>
+                <div class="info-content">
+                    <button onclick="exportChart()" style="width: 100%; padding: 8px; margin-bottom: 8px; background: #667eea; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                        📥 Export Chart
+                    </button>
+                    <button onclick="resetView()" style="width: 100%; padding: 8px; background: #e2e8f0; color: #4a5568; border: none; border-radius: 4px; cursor: pointer;">
+                        🔄 Reset View
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentData = null;
+        let currentChart = null;
+        let filteredData = null;
+        let activeFilters = [];
+        let selectedPoint = null;
+    let groupedScatterState = null; // { level: 'clusters'|'subclusters'|'points', clusterLabel?: string, subclusterLabel?: string }
+
+        // File input handler
+        document.getElementById('fileInput').addEventListener('change', handleFileSelect);
+        document.getElementById('plotType').addEventListener('change', updateChart);
+        document.getElementById('colorBy').addEventListener('change', updateChart);
+        document.getElementById('xAxis').addEventListener('change', updateChart);
+        document.getElementById('yAxis').addEventListener('change', updateChart);
+        document.getElementById('filterKey').addEventListener('change', updateFilterValues);
+        document.getElementById('addFilter').addEventListener('click', addFilter);
+        document.getElementById('drillupBtn').addEventListener('click', function(){
+            drillUpGroupedScatter();
+        });
+
+        function showError(message) {
+            const errorDiv = document.getElementById('errorMessage');
+            errorDiv.textContent = message;
+            errorDiv.style.display = 'block';
+            setTimeout(() => {
+                errorDiv.style.display = 'none';
+            }, 5000);
+        }
+
+        function showLoading(show = true) {
+            document.getElementById('loading').style.display = show ? 'block' : 'none';
+        }
+
+        function handleFileSelect(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            document.getElementById('fileName').textContent = file.name;
+            showLoading(true);
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    let data;
+                    const content = e.target.result;
+                    
+                    if (file.name.endsWith('.json')) {
+                        data = JSON.parse(content);
+                    } else if (file.name.endsWith('.csv')) {
+                        data = parseCSV(content);
+                    } else {
+                        // Try to parse as JSON first, then as CSV
+                        try {
+                            data = JSON.parse(content);
+                        } catch {
+                            data = parseCSV(content);
+                        }
+                    }
+
+                    // Check if this is the analysis format with entries
+                    if (data && data.entries && Array.isArray(data.entries)) {
+                        // Transform analysis data to flat format for visualization
+                        currentData = data.entries.map(entry => ({
+                            id: entry.id,
+                            x: entry.coordinates ? entry.coordinates[0] : 0,
+                            y: entry.coordinates ? entry.coordinates[1] : 0,
+                            context_summary: entry.context_summary || '',
+                            conversation_summary: entry.conversation_summary || '',
+                            combined_summary: entry.combined_summary || '',
+                            subcluster_label: entry.subcluster_label || 'unknown',
+                            cluster: entry.cluster || 'unknown',
+                            conversation_turns: entry.metadata?.conversation_turns || 0,
+                            ...entry.metadata || {}
+                        }));
+                        
+                        // Store original analysis data for reference
+                        window.analysisData = data;
+                    } else {
+                        // Handle regular flat data
+                        currentData = Array.isArray(data) ? data : [data];
+                    }
+                    
+                    filteredData = [...currentData];
+                    
+                    updateDatasetInfo();
+                    populateAxisOptions();
+                    populateColorOptions();
+                    populateFilterOptions();
+                    updateChart();
+                    
+                } catch (error) {
+                    showError(`Error loading file: ${error.message}`);
+                } finally {
+                    showLoading(false);
+                }
+            };
+            
+            reader.readAsText(file);
+        }
+
+        function parseCSV(csv) {
+            const lines = csv.trim().split('\n');
+            const headers = lines[0].split(',').map(h => h.trim());
+            
+            return lines.slice(1).map(line => {
+                const values = line.split(',');
+                const obj = {};
+                headers.forEach((header, index) => {
+                    let value = values[index]?.trim() || '';
+                    // Try to convert to number
+                    const numValue = parseFloat(value);
+                    obj[header] = !isNaN(numValue) ? numValue : value;
+                });
+                return obj;
+            });
+        }
+
+        function updateDatasetInfo() {
+            if (!currentData || currentData.length === 0) {
+                document.getElementById('datasetInfo').textContent = 'No data loaded';
+                document.getElementById('statsGrid').style.display = 'none';
+                return;
+            }
+
+            const totalRows = currentData.length;
+            const sampleRow = currentData[0];
+            const totalCols = Object.keys(sampleRow).length;
+
+            let infoText = `Loaded ${totalRows} records with ${totalCols} fields.<br>`;
+            
+            // Add analysis-specific information if available
+            if (window.analysisData) {
+                const summary = window.analysisData.summary;
+                if (summary) {
+                    infoText += `<strong>Analysis Summary:</strong><br>`;
+                    infoText += `• Total entries: ${summary.total_entries}<br>`;
+                    infoText += `• Clusters: ${summary.total_clusters}<br>`;
+                    infoText += `• Subclusters: ${summary.unique_subcluster_labels}<br>`;
+                    infoText += `• Method: ${summary.clustering_method}<br>`;
+                }
+                
+                if (window.analysisData.axes) {
+                    infoText += `<strong>Axes:</strong> ${window.analysisData.axes.join(', ')}<br>`;
+                }
+                
+                // Show LLM analysis if available
+                if (window.analysisData.llm_analysis) {
+                    document.getElementById('llmAnalysisCard').style.display = 'block';
+                    const content = document.getElementById('llmAnalysisContent');
+                    
+                    // Render markdown
+                    try {
+                        const markdownHtml = marked.parse(window.analysisData.llm_analysis);
+                        content.innerHTML = markdownHtml;
+                        content.className = 'info-content markdown-content';
+                    } catch (error) {
+                        // Fallback to plain text with line breaks
+                        content.innerHTML = window.analysisData.llm_analysis.replace(/\n/g, '<br>');
+                        content.className = 'info-content';
+                    }
+                } else {
+                    document.getElementById('llmAnalysisCard').style.display = 'none';
+                }
+            } else {
+                infoText += `<strong>Sample fields:</strong> ${Object.keys(sampleRow).slice(0, 3).join(', ')}`;
+                infoText += Object.keys(sampleRow).length > 3 ? '...' : '';
+                document.getElementById('llmAnalysisCard').style.display = 'none';
+            }
+
+            document.getElementById('datasetInfo').innerHTML = infoText;
+            document.getElementById('totalRows').textContent = totalRows;
+            document.getElementById('totalCols').textContent = totalCols;
+            document.getElementById('statsGrid').style.display = 'grid';
+        }
+
+        function populateAxisOptions() {
+            if (!currentData || currentData.length === 0) return;
+
+            const fields = Object.keys(currentData[0]);
+            const numericFields = fields.filter(field => 
+                typeof currentData[0][field] === 'number'
+            );
+
+            const xAxisSelect = document.getElementById('xAxis');
+            const yAxisSelect = document.getElementById('yAxis');
+
+            // Clear existing options except first
+            xAxisSelect.innerHTML = '<option value="">Select X-Axis</option>';
+            yAxisSelect.innerHTML = '<option value="">Select Y-Axis</option>';
+
+            fields.forEach(field => {
+                const optionX = new Option(field, field);
+                const optionY = new Option(field, field);
+                xAxisSelect.appendChild(optionX);
+                yAxisSelect.appendChild(optionY);
+            });
+
+            // Auto-select coordinates if available, otherwise first two numeric fields
+            if (fields.includes('x') && fields.includes('y')) {
+                xAxisSelect.value = 'x';
+                yAxisSelect.value = 'y';
+            } else if (numericFields.length >= 2) {
+                xAxisSelect.value = numericFields[0];
+                yAxisSelect.value = numericFields[1];
+            }
+        }
+
+        function populateColorOptions() {
+            if (!currentData || currentData.length === 0) return;
+
+            const fields = Object.keys(currentData[0]);
+            const colorBySelect = document.getElementById('colorBy');
+
+            // Clear existing options
+            colorBySelect.innerHTML = '';
+
+            // Add subcluster_label as default if available, otherwise cluster
+            if (fields.includes('subcluster_label')) {
+                colorBySelect.appendChild(new Option('Subcluster', 'subcluster_label'));
+            } else {
+                colorBySelect.appendChild(new Option('Cluster', 'cluster'));
+            }
+
+            // Add other categorical fields
+            fields.forEach(field => {
+                if (field === 'subcluster_label') return; // Already added as default
+                
+                const values = [...new Set(currentData.map(d => d[field]))];
+                if (values.length <= 20) { // Only add if not too many unique values
+                    colorBySelect.appendChild(new Option(field, field));
+                }
+            });
+        }
+
+        function populateFilterOptions() {
+            if (!currentData || currentData.length === 0) return;
+
+            const filterSection = document.getElementById('filterSection');
+            const filterControls = filterSection.querySelector('.filter-controls');
+            const fields = Object.keys(currentData[0]);
+
+            // Show filter controls
+            filterControls.style.display = 'block';
+            filterSection.querySelector('div').style.display = 'none';
+
+            // Populate field dropdown
+            const filterKeySelect = document.getElementById('filterKey');
+            filterKeySelect.innerHTML = '<option value="">Select Field</option>';
+            
+            fields.forEach(field => {
+                filterKeySelect.appendChild(new Option(field, field));
+            });
+
+            // Clear active filters
+            activeFilters = [];
+            updateActiveFiltersDisplay();
+        }
+
+        function updateFilterValues() {
+            const selectedField = document.getElementById('filterKey').value;
+            const filterValueSelect = document.getElementById('filterValue');
+            
+            filterValueSelect.innerHTML = '<option value="">Select Value</option>';
+            
+            if (!selectedField || !currentData) return;
+
+            // Get unique values for the selected field
+            const values = [...new Set(currentData.map(d => d[selectedField]))];
+            
+            // Sort values
+            values.sort((a, b) => {
+                if (typeof a === 'number' && typeof b === 'number') {
+                    return a - b;
+                }
+                return String(a).localeCompare(String(b));
+            });
+
+            values.forEach(value => {
+                filterValueSelect.appendChild(new Option(String(value), String(value)));
+            });
+        }
+
+        function addFilter() {
+            const field = document.getElementById('filterKey').value;
+            const logic = document.getElementById('filterLogic').value;
+            const value = document.getElementById('filterValue').value;
+
+            if (!field || !logic || !value) {
+                showError('Please select field, logic, and value for the filter');
+                return;
+            }
+
+            // Check if filter already exists
+            const existingFilter = activeFilters.find(f => 
+                f.field === field && f.logic === logic && f.value === value
+            );
+
+            if (existingFilter) {
+                showError('This filter already exists');
+                return;
+            }
+
+            // Add filter
+            activeFilters.push({ field, logic, value });
+            updateActiveFiltersDisplay();
+            applyFilters();
+
+            // Reset form
+            document.getElementById('filterKey').value = '';
+            document.getElementById('filterValue').innerHTML = '<option value="">Select Value</option>';
+        }
+
+        function removeFilter(index) {
+            activeFilters.splice(index, 1);
+            updateActiveFiltersDisplay();
+            applyFilters();
+        }
+
+        function updateActiveFiltersDisplay() {
+            const container = document.getElementById('activeFilters');
+            
+            if (activeFilters.length === 0) {
+                container.innerHTML = '<div style="color: #718096; font-size: 12px; font-style: italic;">No filters applied</div>';
+                return;
+            }
+
+            container.innerHTML = activeFilters.map((filter, index) => `
+                <div class="active-filter">
+                    <span class="active-filter-text">
+                        <strong>${filter.field}</strong> ${filter.logic} <strong>${filter.value}</strong>
+                    </span>
+                    <button class="remove-filter" onclick="removeFilter(${index})">✕</button>
+                </div>
+            `).join('');
+        }
+
+        function applyFilters() {
+            if (!currentData) return;
+
+            if (activeFilters.length === 0) {
+                filteredData = [...currentData];
+            } else {
+                filteredData = currentData.filter(item => {
+                    return activeFilters.every(filter => {
+                        const itemValue = item[filter.field];
+                        const filterValue = filter.value;
+                        
+                        // Convert to appropriate types for comparison
+                        let itemVal = itemValue;
+                        let filterVal = filterValue;
+                        
+                        // Try to convert to numbers if both look numeric
+                        const itemNum = parseFloat(itemValue);
+                        const filterNum = parseFloat(filterValue);
+                        
+                        if (!isNaN(itemNum) && !isNaN(filterNum)) {
+                            itemVal = itemNum;
+                            filterVal = filterNum;
+                        }
+
+                        switch (filter.logic) {
+                            case '=':
+                                return String(itemValue) === String(filterValue);
+                            case '!=':
+                                return String(itemValue) !== String(filterValue);
+                            case '>':
+                                return itemVal > filterVal;
+                            case '<':
+                                return itemVal < filterVal;
+                            case '>=':
+                                return itemVal >= filterVal;
+                            case '<=':
+                                return itemVal <= filterVal;
+                            case 'contains':
+                                return String(itemValue).toLowerCase().includes(String(filterValue).toLowerCase());
+                            default:
+                                return true;
+                        }
+                    });
+                });
+            }
+
+            updateChart();
+        }
+
+        function updateChart() {
+            if (!filteredData || filteredData.length === 0) return;
+
+            const plotType = document.getElementById('plotType').value;
+            const xField = document.getElementById('xAxis').value;
+            const yField = document.getElementById('yAxis').value;
+            const colorField = document.getElementById('colorBy').value;
+
+            // Initialize/reset grouped scatter state when switching to this plot type
+            if (plotType === 'grouped_scatter_plot') {
+                if (!groupedScatterState || groupedScatterState.__plotType !== 'grouped_scatter_plot') {
+                    groupedScatterState = { level: 'clusters', __plotType: 'grouped_scatter_plot' };
+                }
+            } else {
+                groupedScatterState = null;
+                updateDrilldownUI();
+            }
+
+            if (!xField || !yField) {
+                document.getElementById('chartStats').textContent = 'Please select both X and Y axes';
+                return;
+            }
+
+            showLoading(true);
+
+            try {
+                const chartConfig = createChartConfig(plotType, xField, yField, colorField);
+                
+                if (currentChart) {
+                    currentChart.destroy();
+                }
+
+                currentChart = Highcharts.chart('chartContainer', chartConfig);
+                updateChartStats(plotType, xField, yField);
+                
+            } catch (error) {
+                showError(`Error creating chart: ${error.message}`);
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        function createChartConfig(plotType, xField, yField, colorField) {
+            const data = prepareChartData(plotType, xField, yField, colorField);
+            
+            const baseConfig = {
+                chart: {
+                    type: plotType === 'scatter' ? 'scatter' : plotType,
+                    animation: true,
+                    backgroundColor: 'transparent',
+                    zoomType: 'xy',
+                    panKey: 'shift',
+                    panning: {
+                        enabled: true,
+                        type: 'xy'
+                    },
+                    plotBorderWidth: 1,
+                    plotBorderColor: '#333333',
+                    events: (plotType === 'grouped_scatter_plot') ? {} : {
+                        load: function() { addClusterLabels(this); },
+                        redraw: function() { addClusterLabels(this); }
+                    },
+                    resetZoomButton: {
+                        theme: {
+                            display: 'none'
+                        }
+                    }
+                },
+                title: {
+                    text: `${plotType.charAt(0).toUpperCase() + plotType.slice(1)}: ${yField} vs ${xField}`,
+                    style: { fontSize: '18px', fontWeight: '600' }
+                },
+                xAxis: {
+                    title: { 
+                        text: xField,
+                        style: {
+                            display: 'none'
+                        }
+                    },
+                    type: typeof filteredData[0][xField] === 'number' ? 'linear' : 'category',
+                    labels: {
+                        enabled: false
+                    },
+                    tickLength: 0,
+                    lineWidth: 1,
+                    lineColor: '#333333',
+                    gridLineWidth: 0
+                },
+                yAxis: {
+                    title: { 
+                        text: yField,
+                        style: {
+                            display: 'none'
+                        }
+                    },
+                    labels: {
+                        enabled: false
+                    },
+                    tickLength: 0,
+                    lineWidth: 1,
+                    lineColor: '#333333',
+                    gridLineWidth: 0
+                },
+                tooltip: {
+                    enabled: false
+                },
+                plotOptions: {
+                    series: {
+                        point: {
+                            events: {
+                                click: function() { handleGroupedScatterOrPointClick(this, plotType); },
+                                mouseOver: function() { handleGroupedScatterOrPointHover(this, plotType); },
+                                mouseOut: function() { handleGroupedScatterOrPointMouseOut(plotType); }
+                            }
+                        }
+                    },
+                    scatter: {
+                        marker: {
+                            radius: 6,
+                            states: {
+                                hover: {
+                                    enabled: true,
+                                    lineColor: 'rgb(100,100,100)',
+                                    radiusPlus: 2
+                                }
+                            }
+                        }
+                    }
+                },
+                series: data,
+                legend: { enabled: plotType !== 'grouped_scatter_plot' },
+                tooltip: (plotType === 'grouped_scatter_plot') ? { enabled: false } : { enabled: false },
+                credits: { enabled: false },
+                exporting: {
+                    enabled: true,
+                    buttons: {
+                        contextButton: {
+                            menuItems: ['downloadPNG', 'downloadJPEG', 'downloadPDF', 'downloadSVG']
+                        }
+                    }
+                }
+            };
+
+            if (plotType === 'grouped_scatter_plot') {
+                baseConfig.chart.type = 'scatter';
+                baseConfig.plotOptions.scatter = baseConfig.plotOptions.scatter || {};
+                baseConfig.plotOptions.scatter.dataLabels = {
+                    enabled: true,
+                    formatter: function(){ return this.point.__label || ''; },
+                    style: { textOutline: '1px contrast', fontSize: '11px', fontWeight: '600' }
+                };
+            }
+
+            // Add mouse wheel zoom functionality
+            const chartContainer = document.getElementById('chartContainer');
+            chartContainer.addEventListener('wheel', function(e) {
+                if (currentChart) {
+                    e.preventDefault();
+                    
+                    const chart = currentChart;
+                    const xAxis = chart.xAxis[0];
+                    const yAxis = chart.yAxis[0];
+                    
+                    // Get mouse position relative to the chart
+                    const rect = chartContainer.getBoundingClientRect();
+                    const x = e.clientX - rect.left;
+                    const y = e.clientY - rect.top;
+                    
+                    // Convert to chart coordinates
+                    const chartX = xAxis.toValue(x - chart.plotLeft);
+                    const chartY = yAxis.toValue(y - chart.plotTop);
+                    
+                    // Determine zoom direction
+                    const isZoomIn = e.deltaY < 0;
+                    const zoomFactor = isZoomIn ? 0.8 : 1.25;
+                    
+                    // Calculate current ranges
+                    const xMin = xAxis.min;
+                    const xMax = xAxis.max;
+                    const yMin = yAxis.min;
+                    const yMax = yAxis.max;
+                    
+                    const xRange = xMax - xMin;
+                    const yRange = yMax - yMin;
+                    
+                    // Calculate new ranges (same zoom factor for both axes to maintain ratio)
+                    const newXRange = xRange * zoomFactor;
+                    const newYRange = yRange * zoomFactor;
+                    
+                    // Calculate the center point for zoom (where mouse is positioned)
+                    const xRatio = (chartX - xMin) / xRange;
+                    const yRatio = (chartY - yMin) / yRange;
+                    
+                    // Calculate new extremes centered on mouse position
+                    const newXMin = chartX - newXRange * xRatio;
+                    const newXMax = chartX + newXRange * (1 - xRatio);
+                    const newYMin = chartY - newYRange * yRatio;
+                    const newYMax = chartY + newYRange * (1 - yRatio);
+                    
+                    // Apply zoom to both axes simultaneously
+                    xAxis.setExtremes(newXMin, newXMax, false);
+                    yAxis.setExtremes(newYMin, newYMax, true);
+                }
+            });
+
+            return baseConfig;
+        }
+
+        function prepareChartData(plotType, xField, yField, colorField) {
+            if (plotType === 'grouped_scatter_plot') {
+                return prepareGroupedScatterData();
+            }
+            if (plotType === 'pie') {
+                // For pie charts, aggregate data by category
+                const counts = {};
+                filteredData.forEach(item => {
+                    const key = item[xField];
+                    counts[key] = (counts[key] || 0) + (typeof item[yField] === 'number' ? item[yField] : 1);
+                });
+
+                return [{
+                    name: 'Data',
+                    colorByPoint: true,
+                    data: Object.entries(counts).map(([name, y]) => ({ name, y }))
+                }];
+            }
+
+            if (colorField === 'cluster' || !colorField) {
+                // Single series
+                return [{
+                    name: 'Data Points',
+                    data: filteredData.map(item => ({
+                        x: item[xField],
+                        y: item[yField],
+                        data: item
+                    })),
+                    color: '#667eea'
+                }];
+            } else {
+                // Multiple series based on color field
+                const series = {};
+                const colors = ['#667eea', '#764ba2', '#f093fb', '#f5576c', '#4facfe', '#43e97b'];
+                let colorIndex = 0;
+
+                filteredData.forEach(item => {
+                    const seriesName = item[colorField];
+                    if (!series[seriesName]) {
+                        series[seriesName] = {
+                            name: seriesName,
+                            data: [],
+                            color: colors[colorIndex % colors.length]
+                        };
+                        colorIndex++;
+                    }
+                    
+                    series[seriesName].data.push({
+                        x: item[xField],
+                        y: item[yField],
+                        data: item
+                    });
+                });
+
+                return Object.values(series);
+            }
+        }
+
+        function prepareGroupedScatterData() {
+            if (!window.analysisData) {
+                showError('Grouped scatter requires analysis data with clusters.');
+                return [];
+            }
+            if (!groupedScatterState) {
+                groupedScatterState = { level: 'clusters', __plotType: 'grouped_scatter_plot' };
+            }
+
+            const colors = ['#667eea', '#764ba2', '#f093fb', '#f5576c', '#4facfe', '#43e97b', '#ffa600', '#ff7c43', '#2f4b7c', '#665191'];
+            let series = [];
+            const level = groupedScatterState.level;
+
+            function scaleRadius(count, maxCount) {
+                if (maxCount <= 0) return 8;
+                const minR = 8, maxR = 40;
+                const ratio = Math.sqrt(count / maxCount); // sqrt to balance area
+                return Math.round(minR + (maxR - minR) * ratio);
+            }
+
+            if (level === 'clusters') {
+                // Group filteredData by cluster to respect current filters
+                const clusterGroups = {};
+                filteredData.forEach(d => {
+                    const label = d.cluster || 'unknown';
+                    if (!clusterGroups[label]) clusterGroups[label] = [];
+                    clusterGroups[label].push(d);
+                });
+                const maxCount = Math.max(...Object.values(clusterGroups).map(arr => arr.length));
+                const points = Object.entries(clusterGroups).map(([label, items], idx) => {
+                    // Determine coordinates: prefer analysisData.clusters[label].coordinates else average
+                    let cx, cy;
+                    const clusterInfo = window.analysisData.clusters ? window.analysisData.clusters[label] : null;
+                    if (clusterInfo && Array.isArray(clusterInfo.coordinates) && clusterInfo.coordinates.length >= 2) {
+                        [cx, cy] = clusterInfo.coordinates;
+                    } else {
+                        const xs = items.map(i => i.x);
+                        const ys = items.map(i => i.y);
+                        cx = xs.reduce((a,b)=>a+b,0)/xs.length;
+                        cy = ys.reduce((a,b)=>a+b,0)/ys.length;
+                    }
+                    return {
+                        x: cx,
+                        y: cy,
+                        marker: { radius: scaleRadius(items.length, maxCount), fillColor: colors[idx % colors.length], lineWidth: 1, lineColor: '#333' },
+                        __level: 'cluster',
+                        __label: label,
+                        __count: items.length,
+                        __items: items,
+                        name: label
+                    };
+                });
+                series.push({ name: 'Clusters', type: 'scatter', data: points, color: '#667eea' });
+            } else if (level === 'subclusters') {
+                const clusterLabel = groupedScatterState.clusterLabel;
+                // Filter points in this cluster
+                const clusterItems = filteredData.filter(d => d.cluster === clusterLabel);
+                const subGroups = {};
+                clusterItems.forEach(d => {
+                    const sl = d.subcluster_label || 'unknown';
+                    if (!subGroups[sl]) subGroups[sl] = [];
+                    subGroups[sl].push(d);
+                });
+                const maxCount = Math.max(...Object.values(subGroups).map(arr => arr.length));
+                const points = Object.entries(subGroups).map(([label, items], idx) => {
+                    let sx, sy;
+                    const subInfo = window.analysisData.subclusters ? window.analysisData.subclusters[label] : null;
+                    if (subInfo && Array.isArray(subInfo.coordinates) && subInfo.coordinates.length >= 2) {
+                        [sx, sy] = subInfo.coordinates;
+                    } else {
+                        const xs = items.map(i => i.x);
+                        const ys = items.map(i => i.y);
+                        sx = xs.reduce((a,b)=>a+b,0)/xs.length;
+                        sy = ys.reduce((a,b)=>a+b,0)/ys.length;
+                    }
+                    return {
+                        x: sx,
+                        y: sy,
+                        marker: { radius: scaleRadius(items.length, maxCount), fillColor: colors[idx % colors.length], lineWidth: 1, lineColor: '#333' },
+                        __level: 'subcluster',
+                        __label: label,
+                        __cluster: clusterLabel,
+                        __count: items.length,
+                        __items: items,
+                        name: label
+                    };
+                });
+                series.push({ name: 'Subclusters', type: 'scatter', data: points, color: '#764ba2' });
+            } else if (level === 'points') {
+                const clusterLabel = groupedScatterState.clusterLabel;
+                const subLabel = groupedScatterState.subclusterLabel;
+                const points = filteredData.filter(d => d.cluster === clusterLabel && d.subcluster_label === subLabel)
+                    .map(d => ({ x: d.x, y: d.y, data: d, __level: 'point', __label: d.id, marker: { radius: 5 } }));
+                series.push({ name: 'Points', type: 'scatter', data: points, color: '#4facfe' });
+            }
+
+            updateDrilldownUI();
+            return series;
+        }
+
+        function handleGroupedScatterOrPointClick(point, plotType) {
+            if (plotType === 'grouped_scatter_plot') {
+                if (point.__level === 'cluster') {
+                    groupedScatterState.level = 'subclusters';
+                    groupedScatterState.clusterLabel = point.__label;
+                    updateChart();
+                } else if (point.__level === 'subcluster') {
+                    groupedScatterState.level = 'points';
+                    groupedScatterState.subclusterLabel = point.__label;
+                    updateChart();
+                } else {
+                    handlePointClick(point); // regular point
+                }
+            } else {
+                handlePointClick(point);
+            }
+        }
+
+        function handleGroupedScatterOrPointHover(point, plotType) {
+            if (plotType === 'grouped_scatter_plot') {
+                if (point.__level === 'cluster') {
+                    updateInfoBox({
+                        data: { id: point.__label, cluster: point.__label, subcluster_label: '', context_summary: '', conversation_summary: '' },
+                        x: point.x, y: point.y
+                    }, false);
+                    const info = document.getElementById('infoBox');
+                    info.innerHTML = `<strong>Cluster:</strong> ${point.__label}<br/><strong>Entries:</strong> ${point.__count}<br/><em style="color:#667eea;font-size:12px;">Click to see subclusters</em>`;
+                } else if (point.__level === 'subcluster') {
+                    const info = document.getElementById('infoBox');
+                    info.innerHTML = `<strong>Subcluster:</strong> ${point.__label}<br/><strong>Cluster:</strong> ${point.__cluster}<br/><strong>Entries:</strong> ${point.__count}<br/><em style="color:#667eea;font-size:12px;">Click to see points</em>`;
+                } else {
+                    handlePointHover(point);
+                }
+            } else {
+                handlePointHover(point);
+            }
+        }
+
+        function handleGroupedScatterOrPointMouseOut(plotType) {
+            if (plotType === 'grouped_scatter_plot') {
+                if (!selectedPoint) {
+                    clearInfoBox();
+                }
+            } else {
+                handlePointMouseOut();
+            }
+        }
+
+        function drillUpGroupedScatter() {
+            if (!groupedScatterState) return;
+            if (groupedScatterState.level === 'points') {
+                groupedScatterState.level = 'subclusters';
+                groupedScatterState.subclusterLabel = null;
+            } else if (groupedScatterState.level === 'subclusters') {
+                groupedScatterState.level = 'clusters';
+                groupedScatterState.clusterLabel = null;
+            } else {
+                return; // already at top
+            }
+            updateChart();
+        }
+
+        function updateDrilldownUI() {
+            const ctrl = document.getElementById('drilldownControls');
+            const bc = document.getElementById('drilldownBreadcrumb');
+            if (!groupedScatterState || groupedScatterState.level === 'clusters') {
+                ctrl.style.display = groupedScatterState && groupedScatterState.level === 'clusters' ? 'block' : 'none';
+                bc.textContent = 'Clusters';
+                document.getElementById('drillupBtn').style.display = 'none';
+            } else if (groupedScatterState.level === 'subclusters') {
+                ctrl.style.display = 'block';
+                bc.textContent = `Clusters > ${groupedScatterState.clusterLabel}`;
+                document.getElementById('drillupBtn').style.display = 'inline-block';
+            } else if (groupedScatterState.level === 'points') {
+                ctrl.style.display = 'block';
+                bc.textContent = `Clusters > ${groupedScatterState.clusterLabel} > ${groupedScatterState.subclusterLabel}`;
+                document.getElementById('drillupBtn').style.display = 'inline-block';
+            }
+        }
+
+        function handlePointClick(point) {
+            // Toggle selection: if clicking the same point, deselect it
+            if (selectedPoint && selectedPoint.type === 'point' && selectedPoint.point === point) {
+                selectedPoint = null;
+                clearInfoBox();
+            } else {
+                selectedPoint = { type: 'point', point: point };
+                updateInfoBox(point, true); // true indicates selected (permanent)
+            }
+        }
+
+        function handlePointHover(point) {
+            // Only show hover info if no point is selected
+            if (!selectedPoint) {
+                updateInfoBox(point, false); // false indicates hovered (temporary)
+            }
+        }
+
+        function handlePointMouseOut() {
+            // Only clear hover info if no point is selected
+            if (!selectedPoint) {
+                clearInfoBox();
+            }
+        }
+
+        function updateInfoBox(point, isSelected) {
+            const info = document.getElementById('infoBox');
+            const statusText = isSelected ? 'Selected Point' : 'Hovered Point';
+            
+            if (point.data) {
+                let content = `<strong>${statusText}:</strong><br/>`;
+                
+                // Show key analysis fields first
+                if (point.data.id) content += `<strong>ID:</strong> ${point.data.id}<br/>`;
+                if (point.data.subcluster_label) content += `<strong>Subcluster:</strong> ${point.data.subcluster_label}<br/>`;
+                if (point.data.cluster) content += `<strong>Cluster:</strong> ${point.data.cluster}<br/>`;
+                
+                // Show coordinates
+                content += `<strong>X:</strong> ${point.x}<br/>`;
+                content += `<strong>Y:</strong> ${point.y}<br/>`;
+                
+                // Show summaries if available (different truncation for selected vs hovered)
+                const summaryLength = isSelected ? 150 : 80;
+                
+                if (point.data.context_summary) {
+                    const summary = point.data.context_summary.length > summaryLength ? 
+                        point.data.context_summary.substring(0, summaryLength) + '...' : 
+                        point.data.context_summary;
+                    content += `<strong>Context:</strong> ${summary}<br/>`;
+                }
+                
+                if (point.data.conversation_summary) {
+                    const summary = point.data.conversation_summary.length > summaryLength ? 
+                        point.data.conversation_summary.substring(0, summaryLength) + '...' : 
+                        point.data.conversation_summary;
+                    content += `<strong>Conversation:</strong> ${summary}<br/>`;
+                }
+                
+                // Show other metadata
+                if (point.data.conversation_turns !== undefined) {
+                    content += `<strong>Conversation Turns:</strong> ${point.data.conversation_turns}<br/>`;
+                }
+                
+                // Add selection hint for selected points
+                if (isSelected) {
+                    content += `<br/><em style="color: #667eea; font-size: 12px;">Click again to deselect</em>`;
+                }
+                
+                info.innerHTML = content;
+            } else {
+                info.innerHTML = `
+                    <strong>${statusText}:</strong><br/>
+                    X: ${point.x}<br/>
+                    Y: ${point.y}
+                    ${isSelected ? '<br/><br/><em style="color: #667eea; font-size: 12px;">Click again to deselect</em>' : ''}
+                `;
+            }
+        }
+
+        function addClusterLabels(chart) {
+            // Remove existing labels
+            if (chart.clusterLabels) {
+                chart.clusterLabels.forEach(label => {
+                    if (label.element) {
+                        label.destroy();
+                    }
+                });
+            }
+            chart.clusterLabels = [];
+
+            if (!window.analysisData) return;
+
+            const xAxis = chart.xAxis[0];
+            const yAxis = chart.yAxis[0];
+
+            // Calculate zoom level based on axis ranges
+            const xRange = xAxis.max - xAxis.min;
+            const yRange = yAxis.max - yAxis.min;
+            
+            // Get initial data ranges for comparison
+            if (!chart.initialRanges) {
+                const allXCoords = filteredData.map(d => d.x);
+                const allYCoords = filteredData.map(d => d.y);
+                chart.initialRanges = {
+                    xRange: Math.max(...allXCoords) - Math.min(...allXCoords),
+                    yRange: Math.max(...allYCoords) - Math.min(...allYCoords)
+                };
+            }
+
+            // Calculate zoom factor (lower value = more zoomed in)
+            const xZoomFactor = xRange / chart.initialRanges.xRange;
+            const yZoomFactor = yRange / chart.initialRanges.yRange;
+            const avgZoomFactor = (xZoomFactor + yZoomFactor) / 2;
+            
+            // Show subclusters only when zoomed in (zoom factor < 0.7)
+            const showSubclusters = avgZoomFactor < 0.7;
+
+            // Add subcluster labels (only when zoomed in)
+            if (showSubclusters && window.analysisData.subclusters) {
+                Object.entries(window.analysisData.subclusters).forEach(([label, subcluster]) => {
+                    if (subcluster.coordinates && subcluster.coordinates.length >= 2) {
+                        const x = xAxis.toPixels(subcluster.coordinates[0]);
+                        const y = yAxis.toPixels(subcluster.coordinates[1]);
+
+                        const labelElement = chart.renderer.text(
+                            label.replace(/_/g, ' '), // Replace underscores with spaces
+                            x,
+                            y
+                        ).attr({
+                            'text-anchor': 'middle',
+                            'font-size': '16px',
+                            'font-weight': 'bold',
+                            'fill': '#2d3748',
+                            'class': 'subcluster-label',
+                            'data-type': 'subcluster',
+                            'data-label': label
+                        }).css({
+                            'text-shadow': '2px 2px 4px rgba(0,0,0,0.3), 1px 1px 2px rgba(255,255,255,0.8), -1px -1px 2px rgba(255,255,255,0.8)',
+                            'cursor': 'pointer',
+                            'user-select': 'none',
+                            'transition': 'all 0.2s ease'
+                        }).add();
+
+                        // Add hover and click events
+                        labelElement.element.addEventListener('mouseenter', function() {
+                            // Increase font size on hover
+                            labelElement.attr({
+                                'font-size': '18px'
+                            }).css({
+                                'text-shadow': '3px 3px 8px rgba(0,0,0,0.5), 2px 2px 6px rgba(255,255,255,1), -1px -1px 3px rgba(255,255,255,1)',
+                                'fill': '#1a365d'
+                            });
+                            handleClusterHover('subcluster', label, subcluster);
+                        });
+
+                        labelElement.element.addEventListener('mouseleave', function() {
+                            // Reset font size on mouse leave
+                            labelElement.attr({
+                                'font-size': '16px'
+                            }).css({
+                                'text-shadow': '2px 2px 4px rgba(0,0,0,0.3), 1px 1px 2px rgba(255,255,255,0.8), -1px -1px 2px rgba(255,255,255,0.8)',
+                                'fill': '#2d3748'
+                            });
+                            if (!selectedPoint || selectedPoint.type !== 'subcluster') {
+                                clearInfoBox();
+                            }
+                        });
+
+                        labelElement.element.addEventListener('click', function() {
+                            handleClusterClick('subcluster', label, subcluster);
+                        });
+
+                        chart.clusterLabels.push(labelElement);
+                    }
+                });
+            }
+
+            // Add cluster labels (always visible)
+            if (window.analysisData.clusters) {
+                Object.entries(window.analysisData.clusters).forEach(([label, cluster]) => {
+                    if (cluster.coordinates && cluster.coordinates.length >= 2) {
+                        const x = xAxis.toPixels(cluster.coordinates[0]);
+                        const y = yAxis.toPixels(cluster.coordinates[1]);
+
+                        const labelElement = chart.renderer.text(
+                            label.replace(/_/g, ' '), // Replace underscores with spaces
+                            x,
+                            y - 15 // Offset clusters above subclusters
+                        ).attr({
+                            'text-anchor': 'middle',
+                            'font-size': '20px',
+                            'font-weight': 'bold',
+                            'fill': '#1a202c',
+                            'class': 'cluster-label',
+                            'data-type': 'cluster',
+                            'data-label': label
+                        }).css({
+                            'text-shadow': '3px 3px 6px rgba(0,0,0,0.4), 2px 2px 4px rgba(255,255,255,0.9), -1px -1px 2px rgba(255,255,255,0.9)',
+                            'cursor': 'pointer',
+                            'user-select': 'none',
+                            'transition': 'all 0.2s ease'
+                        }).add();
+
+                        // Add hover and click events
+                        labelElement.element.addEventListener('mouseenter', function() {
+                            // Increase font size on hover
+                            labelElement.attr({
+                                'font-size': '24px'
+                            }).css({
+                                'text-shadow': '4px 4px 8px rgba(0,0,0,0.6), 3px 3px 6px rgba(255,255,255,1), -2px -2px 4px rgba(255,255,255,1)',
+                                'fill': '#0d1117'
+                            });
+                            handleClusterHover('cluster', label, cluster);
+                        });
+
+                        labelElement.element.addEventListener('mouseleave', function() {
+                            // Reset font size on mouse leave
+                            labelElement.attr({
+                                'font-size': '20px'
+                            }).css({
+                                'text-shadow': '3px 3px 6px rgba(0,0,0,0.4), 2px 2px 4px rgba(255,255,255,0.9), -1px -1px 2px rgba(255,255,255,0.9)',
+                                'fill': '#1a202c'
+                            });
+                            if (!selectedPoint || selectedPoint.type !== 'cluster') {
+                                clearInfoBox();
+                            }
+                        });
+
+                        labelElement.element.addEventListener('click', function() {
+                            handleClusterClick('cluster', label, cluster);
+                        });
+
+                        chart.clusterLabels.push(labelElement);
+                    }
+                });
+            }
+        }
+
+        function updateChartStats(plotType, xField, yField) {
+            const stats = document.getElementById('chartStats');
+            
+            let content = `<strong>Chart Type:</strong> ${plotType}<br/>`;
+            content += `<strong>X-Axis:</strong> ${xField}<br/>`;
+            content += `<strong>Y-Axis:</strong> ${yField}<br/>`;
+            content += `<strong>Data Points:</strong> ${filteredData.length}<br/>`;
+            
+            if (typeof filteredData[0][yField] === 'number') {
+                const values = filteredData.map(d => d[yField]).filter(v => !isNaN(v));
+                const avg = values.reduce((a, b) => a + b, 0) / values.length;
+                const min = Math.min(...values);
+                const max = Math.max(...values);
+                
+                content += `<strong>Y Range:</strong> ${min.toFixed(2)} - ${max.toFixed(2)}<br/>`;
+                content += `<strong>Y Average:</strong> ${avg.toFixed(2)}`;
+            }
+            
+            stats.innerHTML = content;
+        }
+
+        function exportChart() {
+            if (currentChart) {
+                currentChart.exportChart({
+                    type: 'image/png',
+                    filename: 'chart-export'
+                });
+            } else {
+                showError('No chart to export');
+            }
+        }
+
+        function enableBoxZoom() {
+            if (currentChart) {
+                // Update chart zoom type
+                currentChart.update({
+                    chart: {
+                        zoomType: 'xy',
+                        panning: {
+                            enabled: false
+                        }
+                    }
+                });
+                
+                // Update button states
+                document.getElementById('boxZoomBtn').style.background = '#667eea';
+                document.getElementById('boxZoomBtn').style.color = 'white';
+                document.getElementById('panBtn').style.background = '#e2e8f0';
+                document.getElementById('panBtn').style.color = '#4a5568';
+            }
+        }
+
+        function enablePan() {
+            if (currentChart) {
+                // Update chart to pan mode
+                currentChart.update({
+                    chart: {
+                        zoomType: null,
+                        panning: {
+                            enabled: true,
+                            type: 'xy'
+                        }
+                    }
+                });
+                
+                // Update button states
+                document.getElementById('panBtn').style.background = '#667eea';
+                document.getElementById('panBtn').style.color = 'white';
+                document.getElementById('boxZoomBtn').style.background = '#e2e8f0';
+                document.getElementById('boxZoomBtn').style.color = '#4a5568';
+            }
+        }
+
+        function resetView() {
+            if (currentChart) {
+                currentChart.zoomOut();
+            }
+            
+            // Clear all active filters
+            activeFilters = [];
+            updateActiveFiltersDisplay();
+            applyFilters();
+            
+            // Clear selected point
+            selectedPoint = null;
+            clearInfoBox();
+            
+            // Reset to box zoom mode
+            enableBoxZoom();
+        }
+
+        function handleClusterHover(type, label, data) {
+            // Only show hover info if no point is selected or if this is a different type
+            if (!selectedPoint || selectedPoint.type !== type || selectedPoint.label !== label) {
+                const info = document.getElementById('infoBox');
+                
+                let content = `<strong>Hovered ${type === 'cluster' ? 'Cluster' : 'Subcluster'}:</strong><br/>`;
+                content += `<strong>Label:</strong> ${label}<br/>`;
+                
+                if (data.coordinates) {
+                    content += `<strong>Position:</strong> [${data.coordinates[0].toFixed(2)}, ${data.coordinates[1].toFixed(2)}]<br/>`;
+                }
+                
+                if (type === 'cluster') {
+                    if (data.weight) content += `<strong>Total Entries:</strong> ${data.weight}<br/>`;
+                    if (data.subcluster_labels) content += `<strong>Subclusters:</strong> ${data.subcluster_labels.length}<br/>`;
+                } else {
+                    if (data.count) content += `<strong>Entries:</strong> ${data.count}<br/>`;
+                    if (data.entry_ids) content += `<strong>Entry IDs:</strong> ${data.entry_ids.slice(0, 5).join(', ')}${data.entry_ids.length > 5 ? '...' : ''}<br/>`;
+                }
+                
+                if (data.description) {
+                    const desc = data.description.length > 100 ? 
+                        data.description.substring(0, 100) + '...' : 
+                        data.description;
+                    content += `<strong>Description:</strong> ${desc}<br/>`;
+                }
+                
+                content += `<br/><em style="color: #667eea; font-size: 12px;">Click to zoom into this ${type}</em>`;
+                
+                info.innerHTML = content;
+            }
+        }
+
+        function handleClusterClick(type, label, data) {
+            // Toggle selection: if clicking the same cluster/subcluster, deselect it
+            if (selectedPoint && selectedPoint.type === type && selectedPoint.label === label) {
+                selectedPoint = null;
+                clearInfoBox();
+                return;
+            }
+
+            // Select the cluster/subcluster
+            selectedPoint = { type, label, data };
+            
+            // Show detailed info
+            const info = document.getElementById('infoBox');
+            let content = `<strong>Selected ${type === 'cluster' ? 'Cluster' : 'Subcluster'}:</strong><br/>`;
+            content += `<strong>Label:</strong> ${label}<br/>`;
+            
+            if (data.coordinates) {
+                content += `<strong>Position:</strong> [${data.coordinates[0].toFixed(2)}, ${data.coordinates[1].toFixed(2)}]<br/>`;
+            }
+            
+            if (type === 'cluster') {
+                if (data.weight) content += `<strong>Total Entries:</strong> ${data.weight}<br/>`;
+                if (data.subcluster_labels) {
+                    content += `<strong>Subclusters:</strong> ${data.subcluster_labels.join(', ')}<br/>`;
+                }
+                if (data.subcluster_counts) {
+                    content += `<strong>Subcluster Counts:</strong><br/>`;
+                    Object.entries(data.subcluster_counts).forEach(([sub, count]) => {
+                        content += `&nbsp;&nbsp;• ${sub}: ${count}<br/>`;
+                    });
+                }
+            } else {
+                if (data.count) content += `<strong>Entries:</strong> ${data.count}<br/>`;
+                if (data.entry_ids) {
+                    content += `<strong>Entry IDs:</strong> ${data.entry_ids.join(', ')}<br/>`;
+                }
+            }
+            
+            if (data.description) {
+                content += `<strong>Description:</strong> ${data.description}<br/>`;
+            }
+            
+            content += `<br/><em style="color: #667eea; font-size: 12px;">Click again to deselect</em>`;
+            
+            info.innerHTML = content;
+
+            // Zoom to the cluster/subcluster
+            zoomToCluster(type, label, data);
+        }
+
+        function zoomToCluster(type, label, data) {
+            if (!currentChart || !data.coordinates) return;
+
+            let entryIds = [];
+            
+            if (type === 'cluster' && data.subcluster_labels && window.analysisData.subclusters) {
+                // For clusters, collect all entry IDs from member subclusters
+                data.subcluster_labels.forEach(subLabel => {
+                    const subcluster = window.analysisData.subclusters[subLabel];
+                    if (subcluster && subcluster.entry_ids) {
+                        entryIds = entryIds.concat(subcluster.entry_ids);
+                    }
+                });
+            } else if (type === 'subcluster' && data.entry_ids) {
+                // For subclusters, use direct entry IDs
+                entryIds = data.entry_ids;
+            }
+
+            if (entryIds.length === 0) return;
+
+            // Find the actual data points for these entries
+            const relevantPoints = filteredData.filter(point => 
+                entryIds.includes(point.id)
+            );
+
+            if (relevantPoints.length === 0) return;
+
+            // Calculate bounding box of the points
+            const xCoords = relevantPoints.map(p => p.x);
+            const yCoords = relevantPoints.map(p => p.y);
+            
+            const minX = Math.min(...xCoords);
+            const maxX = Math.max(...xCoords);
+            const minY = Math.min(...yCoords);
+            const maxY = Math.max(...yCoords);
+
+            // Add some padding around the bounding box
+            const xRange = maxX - minX;
+            const yRange = maxY - minY;
+            const padding = 0.2; // 20% padding
+
+            const xPadding = Math.max(xRange * padding, 0.1);
+            const yPadding = Math.max(yRange * padding, 0.1);
+
+            // Set the zoom to encompass all points in the cluster
+            currentChart.xAxis[0].setExtremes(minX - xPadding, maxX + xPadding, false);
+            currentChart.yAxis[0].setExtremes(minY - yPadding, maxY + yPadding, true);
+        }
+
+        function clearInfoBox() {
+            const info = document.getElementById('infoBox');
+            info.innerHTML = 'Hover over or click on a point to see details';
+        }
+
+        function toggleLLMAnalysis() {
+            const content = document.getElementById('llmAnalysisContent');
+            const toggle = document.getElementById('llmToggle');
+            
+            if (content.classList.contains('collapsed')) {
+                // Expand
+                content.classList.remove('collapsed');
+                toggle.textContent = '▼';
+                toggle.classList.remove('collapsed');
+            } else {
+                // Collapse
+                content.classList.add('collapsed');
+                toggle.textContent = '▶';
+                toggle.classList.add('collapsed');
+            }
+        }
+
+        function toggleDatasetInfo() {
+            const content = document.getElementById('datasetInfo');
+            const statsGrid = document.getElementById('statsGrid');
+            const toggle = document.getElementById('datasetToggle');
+            
+            if (content.classList.contains('collapsed')) {
+                // Expand
+                content.classList.remove('collapsed');
+                if (statsGrid.style.display !== 'none') {
+                    statsGrid.classList.remove('collapsed');
+                }
+                toggle.textContent = '▼';
+                toggle.classList.remove('collapsed');
+            } else {
+                // Collapse
+                content.classList.add('collapsed');
+                statsGrid.classList.add('collapsed');
+                toggle.textContent = '▶';
+                toggle.classList.add('collapsed');
+            }
+        }
+    </script>
+</body>
+</html>
