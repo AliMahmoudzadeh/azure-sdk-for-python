@@ -942,9 +942,9 @@ class DataAnalyzer:
             if label_type == "subcluster":
                 prompt = (
                     "You are given several Error samples from an Agent that describe a common issue or topic. I want you to create a label, a description and a Suggestion. Focus on the main theme or subject."
-                    "Label: is a 3-5 word, lowercase, snake_case string that best describes the common context or topic of the following samples. "
-                    "Description: is a 1-2 sentence explanation of the main theme or subject that unites them. don't dive into individual details. Just use overall theme"
-                    "Suggestion: is a 1-2 sentence best way to fix the issue. This should be actionable and specific. The exact change needed to be applied to the Agent, prompt, tools,  or something else. "
+                    "Label: is a 3-5 word, lowercase, snake_case string that best describes the common context or topic of the following samples.\n\n"
+                    "Description: is a 1-2 sentence explanation of the main theme or subject that unites them. don't dive into individual details. Just use overall theme\n\n"
+                    "Suggestion: is a 1-2 sentence best way to fix the issue. This should be actionable and specific. The exact change needed to be applied to the Agent, prompt, tools,  or something else.\n\n"
                     "only return a JSON object with keys: label, description, suggestion"
                     "Here are the samples:\n\n"
                     + "\n---\n".join(strings)
@@ -952,10 +952,22 @@ class DataAnalyzer:
                 )
             else:
                 prompt = (
-                    "You are given several subcluster labels that describe common issues or topics. I want to you to create a label and a description and best way to fix the issue. Focus on the main theme or subject."
-                    "Label is a 3-5 word, lowercase, snake_case label that best describes the common theme or topic of the following subcluster labels. "
-                    "Description: is a 1-2 sentence explanation of the main theme or subject that unites them. don't dive into individual details. Just use overall theme"
-                    "Suggestion: is a 1-2 sentence best way to fix the issue. This should be actionable and specific. The exact change needed to be applied to the Agent, prompt, tools,  or something else."
+                    "You are given several subcluster informations that describe common issues or topics. I want to you to create a label,a description and best way to fix the issue. Focus on the main theme or subject."
+                    "Label: is a 3-5 word, lowercase, snake_case label that best describes the common theme or topic of the following subcluster labels. "
+                    "\t try to adhere to one of these categories if applicable:"
+                    "\t Incorrect_Tool_Call — The agent chose the wrong tool for the task, leading to irrelevant or failed execution."
+                    "\t Required_Tool_Unavailable — The agent did not have access to the tool that was essential for completing the task."
+                    "\t Tool_Call_Formatting_Issues — The agent attempted to call the right tool but used invalid or malformed syntax."
+                    "\t Unexpected_Early_Termination — The agent stopped its process before completion without giving a valid answer."
+                    "\t Hallucinated_Response — The agent produced information that was fabricated, unsupported, or factually incorrect."
+                    "\t Misunderstood_Tool_Info — The agent misinterpreted or mishandled the information returned by a tool."
+                    "\t Tool_Call_Stagnation — The agent looped or redundantly invoked the same tool without progressing."
+                    "\t Action_Plan_Issues — The agent’s reasoning steps or task execution plan were incorrect, incomplete, or illogical."
+                    "\t Inadequate_Final_Answer — The agent gave a final answer but omitted key details required to satisfy the request."
+                    "\t Miscellaneous — The error does not fit any other category, covering rare or unclassified cases."
+                    "\t you can create new labels if needed\n\n"
+                    "Description: is a 1-2 sentence explanation of the main theme or subject that unites them. don't dive into individual details. Just use overall theme\n\n"
+                    "Suggestion: is a 1-2 sentence best way to fix the issue. This should be actionable and specific. The exact change needed to be applied to the Agent, prompt, tools,  or something else.\n\n"
                     "only return a JSON object with keys: label, description, suggestion"
                     "Here are the subcluster information:\n\n"
                     + "\n---\n".join(strings)
