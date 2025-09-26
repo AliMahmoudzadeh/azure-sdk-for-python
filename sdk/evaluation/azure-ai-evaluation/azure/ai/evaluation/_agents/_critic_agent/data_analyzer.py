@@ -81,6 +81,11 @@ import math
 from sentence_transformers import SentenceTransformer
 import numpy as np
 from sklearn.cluster import KMeans
+try:
+    from sklearn.mixture import BayesianGaussianMixture  # type: ignore
+except Exception:  # noqa: BLE001
+    BayesianGaussianMixture = None  # type: ignore
+from sklearn.discriminant_analysis import StandardScaler
 from sklearn.manifold import TSNE
 from sklearn.metrics import silhouette_score, calinski_harabasz_score, davies_bouldin_score
 import hdbscan  # type: ignore
@@ -261,6 +266,11 @@ class DataAnalyzer:
             clustering_method=clustering_method,
         )
 
+        # Remove embeddings from processed_entries after clustering is complete
+        entries_to_save = processed_entries.copy()
+        for entry in entries_to_save:
+            entry.pop("embeddings", None)
+
         llm_analysis = self._analyze_overall(processed_entries, subclusters, clusters)
         axis_names = ["embeddings1", "embeddings2"]
         report = {
@@ -270,13 +280,12 @@ class DataAnalyzer:
                 "total_clusters": len(clusters),
                 "clustering_method": clustering_method,
             },
-            "entries": processed_entries,
+            "entries": entries_to_save,
             "subclusters": subclusters,
             "clusters": clusters,
             "clustering_quality": clustering_quality,
             "llm_analysis": llm_analysis,
-            "axes": axis_names,
-            "raw": processed_entries,
+            "axes": axis_names
         }
         if extra:
             report["classic_metadata"] = extra
@@ -410,11 +419,11 @@ class DataAnalyzer:
                 numeric_to_label[sc_id] = ("misc", "Noise points that don't fit well into any cluster")
             else:
                 numeric_to_label[sc_id] = self._llm_label_from_strings(subcluster_samples.get(sc_id, []), label_type="subcluster")
-        
         for e, lab_num, coord in zip(processed_entries, entry_labels, coords_2d):
             label_info = numeric_to_label.get(lab_num, ["misc", "Miscellaneous entries"])
             e["subcluster_label"] = label_info[0]
             e["subcluster_description"] = label_info[1]
+            e["subcluster_suggestions"] = label_info[2]
             e["coordinates"] = [float(coord[0]), float(coord[1])]
         subclusters = self._aggregate_subclusters(processed_entries)
 
@@ -451,11 +460,17 @@ class DataAnalyzer:
             min_samples=min_samples,
             metric='euclidean',
             cluster_selection_method='eom',  # Excess of Mass
-            prediction_data=True
+            prediction_data=True,
+            # cluster_selection_epsilon=0.00001
         )
         
+        
+        # from sklearn.preprocessing import StandardScaler
+        # X_scaled = StandardScaler().fit_transform(X)
+        X_scaled = X  # HDBSCAN can handle unscaled data reasonably well
+
         # Fit and predict
-        entry_labels = clusterer.fit_predict(X)
+        entry_labels = clusterer.fit_predict(X_scaled)
         
         # Calculate clustering quality metrics
         # Filter out noise points (-1 labels) for quality metrics
@@ -586,7 +601,7 @@ class DataAnalyzer:
                     cluster_map[lbl].append(sc_lab)
                 for cid, members in cluster_map.items():
                     subcluster_descriptions = [subclusters[m].get("description", m) for m in members]
-                    cluster_label, cluster_description = self._llm_label_from_strings(subcluster_descriptions, label_type="cluster")
+                    cluster_label, cluster_description, suggestions = self._llm_label_from_strings(subcluster_descriptions, label_type="cluster")
                     base = cluster_label
                     suffix = 1
                     while cluster_label in clusters:
@@ -598,6 +613,7 @@ class DataAnalyzer:
                         "subcluster_labels": members,
                         "subcluster_counts": {m: subclusters[m]["count"] for m in members},
                         "description": cluster_description,
+                        "suggestions": suggestions,
                     }
 
         # Coordinate averaging (weighted by subcluster counts)
@@ -912,9 +928,10 @@ class DataAnalyzer:
     # =============================================================
     def _llm_label_from_strings(self, strings: List[str], label_type: str = "subcluster") -> Tuple[str, str]:
         """
-        Given a list of strings (contexts or subcluster labels), return a tuple (label, explanation):
+        Given a list of strings (contexts or subcluster labels), return a tuple (label, explanation, suggestion):
         - label: concise, snake_case label using LLM or fallback
         - explanation: short explanation of the cluster/subcluster meaning
+        - suggestion: list of potential remedies or suggestions (if any)
         label_type: 'subcluster' or 'cluster' (for prompt context)
         """
         if not strings:
@@ -923,36 +940,25 @@ class DataAnalyzer:
         explanation = ""
         if self.openai_client and self.deployment_name:
             if label_type == "subcluster":
-                label_prompt = (
-                    "You are to create a concise, 3-5 word, lowercase, snake_case label that best describes the common context or topic of the following samples. "
-                    "Focus on the main theme or subject. Return ONLY the label string.\n\n"
+                prompt = (
+                    "You are given several Error samples from an Agent that describe a common issue or topic. I want you to create a label, a description and a Suggestion. Focus on the main theme or subject."
+                    "Label: is a 3-5 word, lowercase, snake_case string that best describes the common context or topic of the following samples. "
+                    "Description: is a 1-2 sentence explanation of the main theme or subject that unites them. don't dive into individual details. Just use overall theme"
+                    "Suggestion: is a 1-2 sentence best way to fix the issue. This should be actionable and specific. The exact change needed to be applied to the Agent, prompt, tools,  or something else. "
+                    "only return a JSON object with keys: label, description, suggestion"
+                    "Here are the samples:\n\n"
                     + "\n---\n".join(strings)
                     + "\n---\nLabel:"
                 )
-                explanation_prompt = (
-                    "Given the following samples, provide a 1-2 sentence explanation of the main theme or subject that unites them. "
-                    "Be concise and clear.\n\n"
-                    + "\n---\n".join(strings)
-                    + "\n---\nExplanation:"
-                )
             else:
-                
-                label_prompt =(
-                    "You are to create a concise, 3-5 word, lowercase, snake_case label that best describes the common theme or topic of the following subcluster labels. "
-                    "Return ONLY the label string.\n\n"
-                )
-                # we can take an input for specific analysis type, if it is Error Analysis we add the extra instructions.
-                label_prompt = label_prompt + ("try to adhere to one of these categories if applicable:   "
-                    "Final_Answer_Missing_Information,  Called_Incorrect_Tool, Incorrect_Tool_Call_Formatting, Terminated_Early_Unexpectedly, Hallucinated_Information, Misunderstood_Tool_Info, Repeatedly_Calling_Same_Tool, Action_Plan_Flawed, Miscellaneous"
-                    "you can create new labels if needed"
-                )
-                label_prompt = label_prompt + "\n\n" + ", ".join(strings) + "\nLabel:"
-                
-                explanation_prompt = (
-                    "Given the following subcluster labels, provide a 1-2 sentence explanation of the main theme or subject that unites them. "
-                    "Be concise and clear.\n\n"
-                    + ", ".join(strings)
-                    + "\nExplanation:"
+                prompt = (
+                    "You are given several subcluster labels that describe common issues or topics. I want to you to create a label and a description and best way to fix the issue. Focus on the main theme or subject."
+                    "Label is a 3-5 word, lowercase, snake_case label that best describes the common theme or topic of the following subcluster labels. "
+                    "Description: is a 1-2 sentence explanation of the main theme or subject that unites them. don't dive into individual details. Just use overall theme"
+                    "Suggestion: is a 1-2 sentence best way to fix the issue. This should be actionable and specific. The exact change needed to be applied to the Agent, prompt, tools,  or something else."
+                    "only return a JSON object with keys: label, description, suggestion"
+                    "Here are the subcluster information:\n\n"
+                    + "\n---\n".join(strings)
                 )
             try:
                 # Get label
@@ -960,26 +966,25 @@ class DataAnalyzer:
                     model=self.deployment_name,
                     messages=[
                         {"role": "system", "content": "You create ultra-concise context-oriented labels in snake_case."},
-                        {"role": "user", "content": label_prompt},
+                        {"role": "user", "content": prompt},
                     ],
                     temperature=0.1,
-                    max_tokens=20,
+                    max_tokens=1000,
                 )
                 label = response_label.choices[0].message.content.strip()
-                label = label.replace(" ", "_")
-                label = "_".join(label.split("_")[:5]).lower()
-                # Get explanation
-                response_expl = self.openai_client.chat.completions.create(
-                    model=self.deployment_name,
-                    messages=[
-                        {"role": "system", "content": "You explain the main theme of a group of samples in 1-2 sentences."},
-                        {"role": "user", "content": explanation_prompt},
-                    ],
-                    temperature=0.2,
-                    max_tokens=60,
-                )
-                explanation = response_expl.choices[0].message.content.strip()
-                return (label, explanation)
+                # print(f"LLM label response: {label}")
+                # extract JSON if possible
+                if label.startswith("{") and label.endswith("}"):
+                    label_json = json.loads(label)
+                    label = label_json.get("label", "misc").strip().lower().replace(" ", "_")
+                    explanation = label_json.get("description", "").strip()
+                    suggestion = label_json.get("suggestion", "").strip()
+                else:
+                    label = re.sub(r"[^a-z0-9_]+", "_", label.lower())[:50] or "misc"
+                    explanation = "N/A"
+                    suggestion = "N/A"
+
+                return (label, explanation, suggestion)
             except Exception:
                 pass
         # fallback: use first 5 significant words from all strings for label, and join sample snippets for explanation
