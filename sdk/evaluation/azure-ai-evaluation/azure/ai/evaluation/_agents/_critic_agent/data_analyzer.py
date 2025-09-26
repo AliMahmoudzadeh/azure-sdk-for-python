@@ -126,7 +126,7 @@ class DataAnalyzer:
     def process_entries(
         self,
         entries: List[EntryType] = [],
-        structured: bool = False,
+        structured: bool = True,
         input_files: Optional[List[str]] = None,
         save_path: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
@@ -198,6 +198,7 @@ class DataAnalyzer:
                     "conversation_summary": conversation_summary,
                     "combined_summary": combined_summary,
                     "metadata": enriched_metadata,
+                    "conversation": conversation
                 }
             )
 
@@ -338,6 +339,14 @@ class DataAnalyzer:
 
         Overview JSON:
         {json.dumps(overview, indent=2)}
+
+        Please provide:
+        1. A summary of the most common issues
+        2. Patterns in the error reasons
+        3. Recommendations for improvement
+        4. Frequency analysis of each issue type
+
+        Format your response in a clear, structured manner with bullet points and categories.
         """
         try:
             resp = self.openai_client.chat.completions.create(
@@ -927,12 +936,18 @@ class DataAnalyzer:
                     + "\n---\nExplanation:"
                 )
             else:
-                label_prompt = (
+                
+                label_prompt =(
                     "You are to create a concise, 3-5 word, lowercase, snake_case label that best describes the common theme or topic of the following subcluster labels. "
                     "Return ONLY the label string.\n\n"
-                    + ", ".join(strings)
-                    + "\nLabel:"
                 )
+                # we can take an input for specific analysis type, if it is Error Analysis we add the extra instructions.
+                label_prompt = label_prompt + ("try to adhere to one of these categories if applicable:   "
+                    "Final_Answer_Missing_Information,  Called_Incorrect_Tool, Incorrect_Tool_Call_Formatting, Terminated_Early_Unexpectedly, Hallucinated_Information, Misunderstood_Tool_Info, Repeatedly_Calling_Same_Tool, Action_Plan_Flawed, Miscellaneous"
+                    "you can create new labels if needed"
+                )
+                label_prompt = label_prompt + "\n\n" + ", ".join(strings) + "\nLabel:"
+                
                 explanation_prompt = (
                     "Given the following subcluster labels, provide a 1-2 sentence explanation of the main theme or subject that unites them. "
                     "Be concise and clear.\n\n"

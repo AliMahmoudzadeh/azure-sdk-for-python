@@ -241,18 +241,18 @@ class CriticAgent(PromptyEvaluatorBase[Dict[str, Union[str, List[str]]]]):
         #                                                                                         'text': 'Thanks for asking! I’m just a bunch of code, but I’m here and ready to help you. How are you doing?'}]}],
         #  'tool_definitions': []}
         # Filter conversations if belongs to a specific agent
-        try:
-            # This needs converter changes
-            if not conversation or (
-                agent_id and not any(
-                    resp.get("assistant_id") == agent_id for resp in conversation.get("response", [])
-                )
-            ):
-                logger.info(f"Skipping conversation {thread_id} for agent {agent_id}.")
-                return None
-        except Exception as e:
-            logger.error(f"Error filtering conversation for agent {agent_id} and thread {thread_id}: {str(e)}")
-            return None
+        # try:
+        #     # This needs converter changes
+        #     if not conversation or (
+        #         agent_id and not any(
+        #             resp.get("assistant_id") == agent_id for resp in conversation.get("response", [])
+        #         )
+        #     ):
+        #         logger.info(f"Skipping conversation {thread_id} for agent {agent_id}.")
+        #         return None
+        # except Exception as e:
+        #     logger.error(f"Error filtering conversation for agent {agent_id} and thread {thread_id}: {str(e)}")
+        #     return None
         result = {}
         if evaluators_to_run is None:
             # Fix error: asyncio.run cannot be called from a running event loop
@@ -460,6 +460,7 @@ class CriticAgent(PromptyEvaluatorBase[Dict[str, Union[str, List[str]]]]):
         evaluation_results: List[Dict[str, Any]],
         fails_only: bool = True,
         num_clusters: int = 10,
+        agent_id: str = "",
         **kwargs
     ) -> Dict[str, Any]:
         """
@@ -491,7 +492,9 @@ class CriticAgent(PromptyEvaluatorBase[Dict[str, Union[str, List[str]]]]):
             for eval, evaluation in result.get("results", {}).items():
                 metadata = extract_score_from_eval(evaluation)
                 metadata["study"] = "evaluation error"
+                metadata["evaluator"] = eval
                 metadata["thread_id"] = result.get("thread_id")
+                metadata["agent_id"] = agent_id
                 entry = {
                     "context": evaluation,
                     "conversation": result.get("conversation"),
@@ -508,11 +511,12 @@ class CriticAgent(PromptyEvaluatorBase[Dict[str, Union[str, List[str]]]]):
             ]
             print(f"filtered results to {len(data_analyzer_input)} evaluations with failed status")
 
+        output_file_name = f"formatted_evaluations_fails_only_{agent_id}" if fails_only else f"formatted_evaluations_all_{agent_id}"
         import json
-        with open("data/formatted_evaluations.json", "w") as f:
+        with open(f"data/{output_file_name}.json", "w") as f:
             json.dump(data_analyzer_input, f, indent=4)
-        report = data_analyzer.analyze(entries=data_analyzer_input, num_clusters=num_clusters)
-        return report
+        # report = data_analyzer.analyze(entries=data_analyzer_input, num_clusters=num_clusters)
+        # return report
 
     def visualize_errors(self, data_analysis_results: Dict[str, Any], figsize: tuple = (12, 10)):
         """
